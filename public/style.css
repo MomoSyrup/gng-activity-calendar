@@ -1,0 +1,692 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0c0e14;
+  --surface: #151822;
+  --surface-2: #1c2030;
+  --surface-3: #232840;
+  --primary: #6c5ce7;
+  --primary-glow: rgba(108, 92, 231, 0.35);
+  --accent: #00e5ff;
+  --accent-glow: rgba(0, 229, 255, 0.2);
+  --text: #e2e8f0;
+  --text-secondary: #7c8db5;
+  --text-dim: #4a5578;
+  --border: #2a3050;
+  --border-bright: #3a4570;
+  --green: #00e676;
+  --red: #ff5252;
+  --orange: #ffab40;
+  --radius: 12px;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* -------- Header -------- */
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(135deg, var(--accent), var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--surface);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background 0.3s;
+}
+
+.status.connected .dot {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
+}
+
+.status.disconnected .dot {
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
+}
+
+/* -------- Tabs -------- */
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.tab {
+  padding: 0.55rem 1.25rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-bright);
+}
+
+.tab.active {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 0 16px var(--primary-glow);
+}
+
+/* -------- Main -------- */
+
+main {
+  flex: 1;
+}
+
+/* -------- Calendar View -------- */
+
+.calendar-view {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  min-width: 8em;
+  text-align: center;
+  color: var(--text);
+}
+
+.cal-nav {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.cal-nav:hover {
+  background: var(--surface-3);
+  border-color: var(--border-bright);
+}
+
+.cal-today {
+  width: auto;
+  padding: 0 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-left: auto;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.cal-today:hover {
+  background: var(--accent-glow);
+}
+
+/* -------- Calendar Grid -------- */
+
+.calendar-grid {
+  padding: 0.5rem;
+}
+
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.cal-cell {
+  min-height: 72px;
+  border-radius: 6px;
+  padding: 5px 6px;
+  position: relative;
+}
+
+.cal-weekday {
+  min-height: auto;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cal-empty {
+  background: transparent;
+  min-height: 0;
+}
+
+.cal-day {
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.cal-day:hover {
+  border-color: var(--border-bright);
+  background: var(--surface-3);
+}
+
+.cal-day.cal-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow), inset 0 0 8px var(--accent-glow);
+}
+
+.cal-today-cell {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.cal-day-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.cal-today-cell .cal-day-num {
+  color: var(--accent);
+}
+
+/* Compact dots for activities */
+.cal-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.cal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.cal-count {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-left: 1px;
+}
+
+/* -------- Day Popup (click a day) -------- */
+
+.day-popup {
+  position: fixed;
+  z-index: 100;
+  background: var(--surface-2);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  padding: 0;
+  min-width: 260px;
+  max-width: 340px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  animation: popup-in 0.15s ease-out;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes popup-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.day-popup-header {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.day-popup-header h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.day-popup-close {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-popup-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.day-popup-list {
+  padding: 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.day-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.day-popup-item:hover {
+  background: var(--surface-3);
+}
+
+.day-popup-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.day-popup-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-popup-empty {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 1rem 0;
+}
+
+/* -------- Gantt Timeline -------- */
+
+.timeline-section {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-section h3 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.gantt-container {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.gantt-header {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.gantt-header-label {
+  min-width: 180px;
+  max-width: 180px;
+  flex-shrink: 0;
+}
+
+.gantt-dates {
+  display: flex;
+  flex: 1;
+}
+
+.gantt-date-cell {
+  min-width: 28px;
+  max-width: 28px;
+  text-align: center;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 4px 0;
+  border-left: 1px solid var(--border);
+}
+
+.gantt-date-cell.gantt-today {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.gantt-date-cell.gantt-weekend {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.gantt-row {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  border-bottom: 1px solid rgba(42, 48, 80, 0.5);
+  transition: background 0.1s;
+}
+
+.gantt-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.gantt-row-label {
+  min-width: 180px;
+  max-width: 180px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gantt-row-name {
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-row-cells {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.gantt-cell {
+  min-width: 28px;
+  max-width: 28px;
+  height: 22px;
+  border-left: 1px solid rgba(42, 48, 80, 0.3);
+  position: relative;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 3px;
+  height: 16px;
+  border-radius: 3px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+.gantt-bar:hover {
+  opacity: 1;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.gantt-bar-start {
+  border-radius: 3px 0 0 3px;
+}
+
+.gantt-bar-end {
+  border-radius: 0 3px 3px 0;
+}
+
+.gantt-bar-single {
+  border-radius: 3px;
+}
+
+/* -------- Activity Detail Panel -------- */
+
+.activity-detail {
+  padding: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.detail-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.activity-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 0.6rem;
+}
+
+.activity-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-2);
+  transition: all 0.2s;
+}
+
+.activity-card:hover {
+  border-color: var(--border-bright);
+  background: var(--surface-3);
+}
+
+.activity-card.highlight {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.activity-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.3rem;
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.activity-card-header strong {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.activity-source {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  background: var(--surface-3);
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+}
+
+.activity-dates {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+  padding-left: 1.3rem;
+}
+
+.activity-rewards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding-left: 1.3rem;
+  align-items: center;
+}
+
+.rewards-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.reward-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  background: var(--surface-3);
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.reward-tag code {
+  font-size: 0.65rem;
+  color: var(--accent);
+  background: rgba(0, 229, 255, 0.08);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+.no-activities {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 2rem 0;
+  font-size: 0.88rem;
+}
+
+/* -------- Config Check -------- */
+
+.config-check-view {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 3rem 2rem;
+}
+
+.config-placeholder {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 1rem;
+}
+
+/* -------- Footer -------- */
+
+footer {
+  margin-top: 1.25rem;
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* -------- Responsive -------- */
+
+@media (max-width: 768px) {
+  html { font-size: 14px; }
+  .container { padding: 0.75rem; }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .cal-cell { min-height: 56px; padding: 3px 4px; }
+  .cal-dot { width: 5px; height: 5px; }
+  .gantt-row-label { min-width: 120px; max-width: 120px; }
+  .activity-list { grid-template-columns: 1fr; }
+  .day-popup { min-width: 220px; max-width: 280px; }
+}

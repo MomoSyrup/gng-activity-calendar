@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GNG活动</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>GNG活动</h1>
+      <div class="status" id="status">
+        <span class="dot"></span>
+        <span class="label">连接中…</span>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs"></nav>
+
+    <main>
+      <div class="calendar-view" id="calendar-view">
+        <div class="calendar-header">
+          <button class="cal-nav" id="cal-prev">&lt;</button>
+          <h2 class="cal-title" id="cal-title"></h2>
+          <button class="cal-nav" id="cal-next">&gt;</button>
+          <button class="cal-nav cal-today" id="cal-today">今天</button>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="activity-detail" id="activity-detail"></div>
+      </div>
+
+      <div class="config-check-view" id="config-check-view" style="display:none">
+        <div class="config-placeholder">
+          <p>配置检查功能开发中…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span id="update-time"></span>
+    </footer>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
