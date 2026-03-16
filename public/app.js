@@ -123,6 +123,8 @@
     '抽奖活动': 'type-tag-gacha',
     '兑换活动': 'type-tag-redeem',
     '新抽奖':   'type-tag-bravo',
+    '其他活动': 'type-tag-other',
+    '未配置':   'type-tag-unconf',
   };
 
   var TYPE_FILTER_KEY = {
@@ -130,6 +132,8 @@
     '抽奖活动': 'gacha',
     '兑换活动': 'redeem',
     '新抽奖':   'bravo',
+    '其他活动': 'other',
+    '未配置':   'unconf',
   };
 
   function renderTypeTags(types) {
@@ -150,7 +154,8 @@
       { key: 'gacha',  label: '抽奖活动' },
       { key: 'redeem', label: '兑换活动' },
       { key: 'bravo',  label: '新抽奖' },
-      { key: 'none',   label: '未分类' },
+      { key: 'other',  label: '其他活动' },
+      { key: 'unconf', label: '未配置' },
     ];
     var html = '';
     filters.forEach(function (f) {
@@ -169,9 +174,6 @@
 
   function filterByType(activities) {
     if (activeTypeFilter === 'all') return activities;
-    if (activeTypeFilter === 'none') {
-      return activities.filter(function (a) { return !a.types || a.types.length === 0; });
-    }
     return activities.filter(function (a) {
       if (!a.types) return false;
       return a.types.some(function (t) { return TYPE_FILTER_KEY[t] === activeTypeFilter; });

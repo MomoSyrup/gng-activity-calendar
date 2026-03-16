@@ -135,27 +135,90 @@ function dayDiff(d1, d2) {
   return Math.abs(a - b) / 86400000;
 }
 
+const NAME_KEYWORDS = [
+  ['石中剑', ['石中剑', 'sword']],
+  ['石像鬼', ['石像鬼', 'monsterinva', '怪物', 'monster', 'invasion']],
+  ['周末', ['周末', 'supply', 'weekend']],
+  ['签到', ['签到', 'login', 'seasonal']],
+  ['命运之轮', ['命运之轮']],
+  ['99兑换', ['99兑换', '99store', '99商店']],
+  ['荣耀', ['荣耀', 'career', 'glory']],
+  ['巡逻', ['巡逻', 'patrol']],
+  ['木头人', ['木头人', 'tung']],
+  ['箱中', ['箱中', 'chest']],
+  ['雪人', ['雪人', 'snowman']],
+  ['哥布林', ['哥布林', 'goblin']],
+  ['圣诞', ['圣诞', 'christmas']],
+  ['线索', ['线索', 'clue']],
+  ['海岛', ['海岛', 'cave', 'darkcave']],
+  ['冲刺', ['冲刺', 'rush', 'sprint']],
+  ['猎人', ['猎人', 'hunter', 'mercenary', 'bounty']],
+  ['兑换', ['兑换', 'redeem']],
+  ['抽奖', ['抽奖', 'gacha']],
+  ['试炼', ['试炼', 'trial']],
+  ['ramadan', ['ramadan', '斋月', '寻宝']],
+  ['树', ['树', 'tree']],
+];
+
+function nameMatch(gsName, excelNote, excelTxtName) {
+  const gs = (gsName || '').toLowerCase();
+  const note = (excelNote || '').toLowerCase();
+  const txt = (excelTxtName || '').toLowerCase();
+  for (const [, patterns] of NAME_KEYWORDS) {
+    const gsHas = patterns.some((p) => gs.includes(p));
+    const excelHas = patterns.some((p) => note.includes(p) || txt.includes(p));
+    if (gsHas && excelHas) return true;
+  }
+  return false;
+}
+
 function attachEventTypes(activities) {
   const settings = excelReader.getEventSettings();
   const typeMap = excelReader.getEventTypes();
   if (settings.length === 0) return activities;
 
   return activities.map((a) => {
-    const match = settings.find((s) => {
+    let bestMatch = null;
+    let bestScore = Infinity;
+
+    for (const s of settings) {
       const sd = dayDiff(a.startDate, s.startDate);
       const ed = dayDiff(a.endDate, s.endDate);
-      return sd <= 1 && ed <= 1;
-    });
+      const hasNameHit = nameMatch(a.name, s.note, s.name);
+      const nameBonus = hasNameHit ? -0.5 : 0;
 
-    if (match) {
+      let score;
+
+      if (hasNameHit) {
+        if (sd <= 3 && ed <= 3) score = sd + ed;
+        else if (sd <= 3 && ed <= 7) score = 5 + sd + ed;
+        else if (sd <= 7 && ed <= 7) score = 15 + sd + ed;
+        else if (sd <= 3 && ed <= 30) score = 30 + sd + ed;
+        else if (sd <= 7 && ed <= 30) score = 50 + sd + ed;
+        else if (sd <= 3 && ed === Infinity) score = 80 + sd;
+        else if (sd === Infinity && ed === Infinity) score = 90;
+        else continue;
+      } else {
+        if (sd + ed <= 2) score = 100 + sd + ed;
+        else continue;
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestMatch = s;
+      }
+    }
+
+    if (bestMatch) {
+      const matchedTypes = typeMap[bestMatch.eventId] || [];
       return {
         ...a,
-        eventId: match.eventId,
-        excelName: match.note || match.name,
-        types: typeMap[match.eventId] || [],
+        eventId: bestMatch.eventId,
+        excelName: bestMatch.note || bestMatch.name,
+        types: matchedTypes.length > 0 ? matchedTypes : ['其他活动'],
       };
     }
-    return { ...a, eventId: null, excelName: null, types: [] };
+    return { ...a, eventId: null, excelName: null, types: ['未配置'] };
   });
 }
 
