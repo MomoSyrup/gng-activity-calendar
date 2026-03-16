@@ -1,4 +1,4 @@
-# Google Sheet 实时同步网页
+# GNG活动日历
 
 将 Google Sheet 的数据实时同步到网页上。后端定时轮询 Google Sheets API，检测到数据变化后通过 WebSocket 即时推送给所有已连接的客户端。
 
