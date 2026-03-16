@@ -648,6 +648,121 @@ main {
   font-size: 0.88rem;
 }
 
+/* -------- Type Tags -------- */
+
+.type-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding-left: 1.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.type-tag {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.type-tag-task {
+  background: rgba(68, 138, 255, 0.15);
+  color: #448aff;
+  border: 1px solid rgba(68, 138, 255, 0.3);
+}
+
+.type-tag-gacha {
+  background: rgba(234, 128, 252, 0.15);
+  color: #ea80fc;
+  border: 1px solid rgba(234, 128, 252, 0.3);
+}
+
+.type-tag-redeem {
+  background: rgba(255, 171, 64, 0.15);
+  color: #ffab40;
+  border: 1px solid rgba(255, 171, 64, 0.3);
+}
+
+.type-tag-bravo {
+  background: rgba(0, 229, 255, 0.15);
+  color: #00e5ff;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.gantt-row-tags {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.gantt-row-tags .type-tag {
+  font-size: 0.55rem;
+  padding: 0 4px;
+}
+
+/* -------- Type Filter Bar -------- */
+
+.type-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.type-filter-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.type-filter-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-bright);
+}
+
+.type-filter-btn.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.type-filter-btn[data-type="all"].active {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+}
+
+.type-filter-btn[data-type="task"].active {
+  background: #448aff;
+}
+
+.type-filter-btn[data-type="gacha"].active {
+  background: #ea80fc;
+}
+
+.type-filter-btn[data-type="redeem"].active {
+  background: #ffab40;
+  color: #1a1a2e;
+}
+
+.type-filter-btn[data-type="bravo"].active {
+  background: #00e5ff;
+  color: #1a1a2e;
+}
+
+.type-filter-btn[data-type="none"].active {
+  background: var(--text-dim);
+}
+
 /* -------- Config Check -------- */
 
 .config-check-view {

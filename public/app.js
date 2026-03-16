@@ -9,6 +9,7 @@
   var updateTimeEl = document.getElementById('update-time');
 
   var activeTab = '__calendar__';
+  var activeTypeFilter = 'all';
 
   var calendarActivities = [];
   var calYear, calMonth;
@@ -44,6 +45,7 @@
   // -------- Initial load --------
 
   renderTabs();
+  renderTypeFilterBar();
 
   fetch('/api/calendar')
     .then(function (res) { return res.json(); })
@@ -114,6 +116,68 @@
     configView.style.display   = activeTab === '__config__'   ? '' : 'none';
   }
 
+  // -------- Type Helpers --------
+
+  var TYPE_CSS = {
+    '任务活动': 'type-tag-task',
+    '抽奖活动': 'type-tag-gacha',
+    '兑换活动': 'type-tag-redeem',
+    '新抽奖':   'type-tag-bravo',
+  };
+
+  var TYPE_FILTER_KEY = {
+    '任务活动': 'task',
+    '抽奖活动': 'gacha',
+    '兑换活动': 'redeem',
+    '新抽奖':   'bravo',
+  };
+
+  function renderTypeTags(types) {
+    if (!types || types.length === 0) return '';
+    var html = '';
+    types.forEach(function (t) {
+      var cls = TYPE_CSS[t] || '';
+      html += '<span class="type-tag ' + cls + '">' + escapeHtml(t) + '</span>';
+    });
+    return html;
+  }
+
+  function renderTypeFilterBar() {
+    var bar = document.getElementById('type-filter-bar');
+    var filters = [
+      { key: 'all',    label: '全部' },
+      { key: 'task',   label: '任务活动' },
+      { key: 'gacha',  label: '抽奖活动' },
+      { key: 'redeem', label: '兑换活动' },
+      { key: 'bravo',  label: '新抽奖' },
+      { key: 'none',   label: '未分类' },
+    ];
+    var html = '';
+    filters.forEach(function (f) {
+      var act = activeTypeFilter === f.key ? ' active' : '';
+      html += '<button class="type-filter-btn' + act + '" data-type="' + f.key + '">' + f.label + '</button>';
+    });
+    bar.innerHTML = html;
+    bar.onclick = function (e) {
+      var btn = e.target.closest('.type-filter-btn');
+      if (!btn) return;
+      activeTypeFilter = btn.getAttribute('data-type');
+      renderTypeFilterBar();
+      renderCalendar();
+    };
+  }
+
+  function filterByType(activities) {
+    if (activeTypeFilter === 'all') return activities;
+    if (activeTypeFilter === 'none') {
+      return activities.filter(function (a) { return !a.types || a.types.length === 0; });
+    }
+    return activities.filter(function (a) {
+      if (!a.types) return false;
+      return a.types.some(function (t) { return TYPE_FILTER_KEY[t] === activeTypeFilter; });
+    });
+  }
+
   // -------- Calendar --------
 
   function assignColors() {
@@ -175,11 +239,11 @@
     var monthStart = fmtDate(calYear, calMonth + 1, 1);
     var monthEnd = fmtDate(calYear, calMonth + 1, daysInMonth);
 
-    var monthActivities = calendarActivities.filter(function (a) {
+    var monthActivities = filterByType(calendarActivities.filter(function (a) {
       if (!a.startDate) return false;
       var e = a.endDate || a.startDate;
       return a.startDate <= monthEnd && e >= monthStart;
-    });
+    }));
 
     // -------- Calendar grid with dots --------
     var MAX_DOTS = 8;
@@ -378,6 +442,9 @@
       rowsHtml += '<div class="gantt-row-label">';
       rowsHtml += '<span class="gantt-row-dot" style="background:' + c + '"></span>';
       rowsHtml += '<span class="gantt-row-name" title="' + escapeAttr(a.name) + '">' + escapeHtml(a.name) + '</span>';
+      if (a.types && a.types.length > 0) {
+        rowsHtml += '<span class="gantt-row-tags">' + renderTypeTags(a.types) + '</span>';
+      }
       rowsHtml += '</div>';
       rowsHtml += '<div class="gantt-row-cells">';
 
@@ -432,6 +499,10 @@
       html += '<strong>' + escapeHtml(a.name) + '</strong>';
       html += '<span class="activity-source">' + escapeHtml(a.source) + '</span>';
       html += '</div>';
+      if (a.types && a.types.length > 0) {
+        html += '<div class="type-tags">' + renderTypeTags(a.types) + '</div>';
+      }
+
       html += '<div class="activity-dates">' +
         escapeHtml(a.startDate || '未定') + ' ~ ' + escapeHtml(a.endDate || '未定') +
         '</div>';

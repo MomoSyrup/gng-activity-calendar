@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const { google } = require('googleapis');
 const path = require('path');
 const { parseActivities } = require('./parser');
+const excelReader = require('./excel-reader');
 
 const app = express();
 const server = http.createServer(app);
@@ -127,11 +128,42 @@ app.get('/api/data', (_req, res) => {
   res.json({ data: cachedData });
 });
 
+function dayDiff(d1, d2) {
+  if (!d1 || !d2) return Infinity;
+  const a = new Date(d1 + 'T00:00:00Z');
+  const b = new Date(d2 + 'T00:00:00Z');
+  return Math.abs(a - b) / 86400000;
+}
+
+function attachEventTypes(activities) {
+  const settings = excelReader.getEventSettings();
+  const typeMap = excelReader.getEventTypes();
+  if (settings.length === 0) return activities;
+
+  return activities.map((a) => {
+    const match = settings.find((s) => {
+      const sd = dayDiff(a.startDate, s.startDate);
+      const ed = dayDiff(a.endDate, s.endDate);
+      return sd <= 1 && ed <= 1;
+    });
+
+    if (match) {
+      return {
+        ...a,
+        eventId: match.eventId,
+        excelName: match.note || match.name,
+        types: typeMap[match.eventId] || [],
+      };
+    }
+    return { ...a, eventId: null, excelName: null, types: [] };
+  });
+}
+
 app.get('/api/calendar', (_req, res) => {
   if (!cachedData) return res.json({ activities: [] });
   try {
     const activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
-    res.json({ activities });
+    res.json({ activities: attachEventTypes(activities) });
   } catch (err) {
     console.error('Calendar parse error:', err.message);
     res.status(500).json({ error: err.message });
@@ -156,6 +188,9 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running at http://localhost:${PORT}`);
+
+  excelReader.load(process.env.EVENT_EXCEL_PATH);
+  setInterval(() => excelReader.load(), 3600000);
 
   try {
     const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
