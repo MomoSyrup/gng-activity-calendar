@@ -3,16 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GNG活动</title>
+  <title>GNG活动日历</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    (function() {
+      var t = localStorage.getItem('gng-theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>GNG活动</h1>
-      <div class="status" id="status">
-        <span class="dot"></span>
-        <span class="label">连接中…</span>
+      <div class="header-left">
+        <h1>GNG 活动日历</h1>
+        <span class="header-badge">LIVE</span>
+      </div>
+      <div class="header-right">
+        <div class="status" id="status">
+          <span class="dot"></span>
+          <span class="label">连接中…</span>
+        </div>
+        <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
 
@@ -20,6 +35,7 @@
 
     <main>
       <div class="calendar-view" id="calendar-view">
+        <div class="active-now-section" id="active-now"></div>
         <div class="type-filter-bar" id="type-filter-bar"></div>
         <div class="calendar-header">
           <button class="cal-nav" id="cal-prev">&lt;</button>
@@ -27,7 +43,8 @@
           <button class="cal-nav" id="cal-next">&gt;</button>
           <button class="cal-nav cal-today" id="cal-today">今天</button>
         </div>
-        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="calendar-body" id="calendar-body"></div>
+        <div class="timeline-section" id="timeline-section"></div>
         <div class="activity-detail" id="activity-detail"></div>
       </div>
 
@@ -40,7 +57,62 @@
 
     <footer>
       <span id="update-time"></span>
+      <button class="version-tag" id="version-btn">v0.2.0</button>
     </footer>
+  </div>
+
+  <div class="changelog-overlay" id="changelog-overlay">
+    <div class="changelog-modal">
+      <div class="changelog-header">
+        <h3>更新日志</h3>
+        <button class="changelog-close" id="changelog-close">&times;</button>
+      </div>
+      <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.2.0</span>
+            <span class="changelog-date">2026-03-16</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增 Alpha Knowledge (URU) AI 机器人数据自动同步</li>
+            <li>活动数据变更时自动生成 Markdown 知识文档并推送至 AI 平台</li>
+            <li>每30分钟定期刷新同步，确保「今日」相关数据实时准确</li>
+            <li>支持增量更新：内容未变化时自动跳过上传</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.1.2</span>
+            <span class="changelog-date">2026-03-16</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增版本号点击查看更新日志功能</li>
+            <li>后续每次更新将自动记录更新日志</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.1.1</span>
+            <span class="changelog-date">2026-03-16</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增「正在进行」模块，顶部展示当前进行中的活动（排除未配置），含剩余天数和进度条</li>
+            <li>日历改为迷你日历 + 侧边详情栏布局，点击日期在右侧显示当日活动列表</li>
+            <li>时间线从甘特图改为泳道式时间轴，按活动类型分组，圆角胶囊进度条</li>
+            <li>修复泳道时间条内文字与背景同色导致不可见的问题</li>
+            <li>全面重写 UI：暗/浅色双主题切换、毛玻璃效果、渐变标题动画</li>
+            <li>筛选栏改为胶囊按钮 + 数量计数徽章</li>
+            <li>活动卡片增加毛玻璃效果和悬停渐变边框动画</li>
+            <li>引入 Noto Sans SC 字体、自定义滚动条、全局平滑过渡</li>
+            <li>新增版本号显示</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

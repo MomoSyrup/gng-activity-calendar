@@ -1,3 +1,8 @@
 node_modules/
 .env
 ngrok/
+.cursor/
+deploy.js
+upload.js
+public/calendar-preview.html
+public/timeline-preview.html

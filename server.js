@@ -7,6 +7,7 @@ const { google } = require('googleapis');
 const path = require('path');
 const { parseActivities } = require('./parser');
 const excelReader = require('./excel-reader');
+const alphaSync = require('./alpha-knowledge-sync');
 
 const app = express();
 const server = http.createServer(app);
@@ -114,6 +115,7 @@ async function poll() {
         `pushing to ${io.engine.clientsCount} client(s)`
       );
       io.emit('sheet:update', cachedData);
+      triggerAlphaSync();
     }
   } catch (err) {
     console.error('Polling error:', err.message);
@@ -278,12 +280,30 @@ function supplementWeekendSupply(activities) {
   return activities;
 }
 
+function buildTypedActivities() {
+  if (!cachedData) return [];
+  let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
+  activities = supplementWeekendSupply(activities);
+  return attachEventTypes(activities);
+}
+
+function triggerAlphaSync() {
+  const apiKey = process.env.ALPHA_KNOWLEDGE_API_KEY;
+  if (!apiKey) return;
+  try {
+    const activities = buildTypedActivities();
+    const expertId = process.env.ALPHA_KNOWLEDGE_EXPERT_ID || '7420';
+    const citationURL = process.env.ALPHA_KNOWLEDGE_CITATION_URL || '';
+    alphaSync.sync(activities, apiKey, expertId, citationURL);
+  } catch (err) {
+    console.error('[AlphaKnowledge] Trigger error:', err.message);
+  }
+}
+
 app.get('/api/calendar', (_req, res) => {
   if (!cachedData) return res.json({ activities: [] });
   try {
-    let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
-    activities = supplementWeekendSupply(activities);
-    res.json({ activities: attachEventTypes(activities) });
+    res.json({ activities: buildTypedActivities() });
   } catch (err) {
     console.error('Calendar parse error:', err.message);
     res.status(500).json({ error: err.message });
@@ -325,6 +345,11 @@ server.listen(PORT, '0.0.0.0', async () => {
   } catch (err) {
     console.error('Failed to load initial data:', err.message);
   }
+
+  triggerAlphaSync();
+
+  // Periodic re-sync (every 30 min) to keep "today" calculations fresh
+  setInterval(triggerAlphaSync, 30 * 60 * 1000);
 
   setInterval(poll, POLL_INTERVAL);
 });

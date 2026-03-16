@@ -1,7 +1,7 @@
 {
-  "name": "google-sheet-sync",
-  "version": "1.0.0",
-  "description": "Real-time Google Sheet to web page sync via WebSocket",
+  "name": "gng-activity-calendar",
+  "version": "0.2.0",
+  "description": "GNG 游戏活动日历 - 实时同步 Google Sheets 数据，支持 AI 知识库集成",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
