@@ -172,15 +172,15 @@ function nameMatch(gsName, excelNote, excelTxtName) {
   return false;
 }
 
-function classifyUntyped(eventId, excelName, excelTxtName, gsName) {
+function isWebActivity(...fields) {
+  const combined = fields.map((s) => (s || '').toLowerCase()).join(' ');
+  return combined.includes('h5') || combined.includes('网页');
+}
+
+function classifyUntyped(eventId, excelName, excelTxtName, gsName, gsCategory) {
   const overviewIds = excelReader.getOverviewIds();
   if (overviewIds.has(eventId)) return ['仅说明页活动'];
-
-  const combined = [excelName, excelTxtName, gsName]
-    .map((s) => (s || '').toLowerCase())
-    .join(' ');
-  if (combined.includes('h5') || combined.includes('网页')) return ['网页活动'];
-
+  if (isWebActivity(excelName, excelTxtName, gsName, gsCategory)) return ['网页活动'];
   return ['其他活动'];
 }
 
@@ -230,8 +230,11 @@ function attachEventTypes(activities) {
         types:
           matchedTypes.length > 0
             ? matchedTypes
-            : classifyUntyped(bestMatch.eventId, bestMatch.note, bestMatch.name, a.name),
+            : classifyUntyped(bestMatch.eventId, bestMatch.note, bestMatch.name, a.name, a.category),
       };
+    }
+    if (isWebActivity(a.name, a.category)) {
+      return { ...a, eventId: null, excelName: null, types: ['网页活动'] };
     }
     return { ...a, eventId: null, excelName: null, types: ['未配置'] };
   });
