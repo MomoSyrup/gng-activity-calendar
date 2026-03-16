@@ -12,6 +12,7 @@ const TYPE_MAP = {
 
 let cachedSettings = [];
 let cachedTypesByEventId = {};
+let cachedOverviewIds = new Set();
 let lastMtime = 0;
 let filePath = null;
 
@@ -65,7 +66,17 @@ function parseExcelFile(fpath) {
     }
   }
 
-  return { settings, typesByEventId };
+  const overviewIds = new Set();
+  const overviewSheet = wb.Sheets['EventOverview'];
+  if (overviewSheet) {
+    const rows = XLSX.utils.sheet_to_json(overviewSheet, { header: 1 });
+    for (let i = HEADER_ROWS; i < rows.length; i++) {
+      const eid = rows[i] && rows[i][0];
+      if (eid != null) overviewIds.add(eid);
+    }
+  }
+
+  return { settings, typesByEventId, overviewIds };
 }
 
 function load(fpath) {
@@ -84,9 +95,11 @@ function load(fpath) {
     const result = parseExcelFile(filePath);
     cachedSettings = result.settings;
     cachedTypesByEventId = result.typesByEventId;
+    cachedOverviewIds = result.overviewIds;
     console.log(
       `[excel-reader] Loaded ${cachedSettings.length} events, ` +
-      `${Object.keys(cachedTypesByEventId).length} typed IDs`
+      `${Object.keys(cachedTypesByEventId).length} typed IDs, ` +
+      `${cachedOverviewIds.size} overview IDs`
     );
   } catch (err) {
     console.error('[excel-reader] Parse error:', err.message);
@@ -101,4 +114,8 @@ function getEventTypes() {
   return cachedTypesByEventId;
 }
 
-module.exports = { load, getEventSettings, getEventTypes };
+function getOverviewIds() {
+  return cachedOverviewIds;
+}
+
+module.exports = { load, getEventSettings, getEventTypes, getOverviewIds };

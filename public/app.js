@@ -119,21 +119,25 @@
   // -------- Type Helpers --------
 
   var TYPE_CSS = {
-    '任务活动': 'type-tag-task',
-    '抽奖活动': 'type-tag-gacha',
-    '兑换活动': 'type-tag-redeem',
-    '新抽奖':   'type-tag-bravo',
-    '其他活动': 'type-tag-other',
-    '未配置':   'type-tag-unconf',
+    '任务活动':     'type-tag-task',
+    '抽奖活动':     'type-tag-gacha',
+    '兑换活动':     'type-tag-redeem',
+    '新抽奖':       'type-tag-bravo',
+    '仅说明页活动': 'type-tag-overview',
+    '网页活动':     'type-tag-web',
+    '其他活动':     'type-tag-other',
+    '未配置':       'type-tag-unconf',
   };
 
   var TYPE_FILTER_KEY = {
-    '任务活动': 'task',
-    '抽奖活动': 'gacha',
-    '兑换活动': 'redeem',
-    '新抽奖':   'bravo',
-    '其他活动': 'other',
-    '未配置':   'unconf',
+    '任务活动':     'task',
+    '抽奖活动':     'gacha',
+    '兑换活动':     'redeem',
+    '新抽奖':       'bravo',
+    '仅说明页活动': 'overview',
+    '网页活动':     'web',
+    '其他活动':     'other',
+    '未配置':       'unconf',
   };
 
   function renderTypeTags(types) {
@@ -149,13 +153,15 @@
   function renderTypeFilterBar() {
     var bar = document.getElementById('type-filter-bar');
     var filters = [
-      { key: 'all',    label: '全部' },
-      { key: 'task',   label: '任务活动' },
-      { key: 'gacha',  label: '抽奖活动' },
-      { key: 'redeem', label: '兑换活动' },
-      { key: 'bravo',  label: '新抽奖' },
-      { key: 'other',  label: '其他活动' },
-      { key: 'unconf', label: '未配置' },
+      { key: 'all',      label: '全部' },
+      { key: 'task',     label: '任务活动' },
+      { key: 'gacha',    label: '抽奖活动' },
+      { key: 'redeem',   label: '兑换活动' },
+      { key: 'bravo',    label: '新抽奖' },
+      { key: 'overview', label: '仅说明页' },
+      { key: 'web',      label: '网页活动' },
+      { key: 'other',    label: '其他活动' },
+      { key: 'unconf',   label: '未配置' },
     ];
     var html = '';
     filters.forEach(function (f) {

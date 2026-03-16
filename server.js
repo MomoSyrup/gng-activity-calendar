@@ -172,6 +172,18 @@ function nameMatch(gsName, excelNote, excelTxtName) {
   return false;
 }
 
+function classifyUntyped(eventId, excelName, excelTxtName, gsName) {
+  const overviewIds = excelReader.getOverviewIds();
+  if (overviewIds.has(eventId)) return ['仅说明页活动'];
+
+  const combined = [excelName, excelTxtName, gsName]
+    .map((s) => (s || '').toLowerCase())
+    .join(' ');
+  if (combined.includes('h5') || combined.includes('网页')) return ['网页活动'];
+
+  return ['其他活动'];
+}
+
 function attachEventTypes(activities) {
   const settings = excelReader.getEventSettings();
   const typeMap = excelReader.getEventTypes();
@@ -215,7 +227,10 @@ function attachEventTypes(activities) {
         ...a,
         eventId: bestMatch.eventId,
         excelName: bestMatch.note || bestMatch.name,
-        types: matchedTypes.length > 0 ? matchedTypes : ['其他活动'],
+        types:
+          matchedTypes.length > 0
+            ? matchedTypes
+            : classifyUntyped(bestMatch.eventId, bestMatch.note, bestMatch.name, a.name),
       };
     }
     return { ...a, eventId: null, excelName: null, types: ['未配置'] };
