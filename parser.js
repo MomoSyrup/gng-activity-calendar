@@ -160,7 +160,7 @@ const NAME_ALIASES = [
   ['圣诞礼物', 'christmas present'],
   ['藏品线索', 'ice dragon scale clue'],
   ['许愿活动', 'make a wish'],
-  ['佣兵赏金', "Mercenary's Grand Bounty"],
+  ['赛季组队冲刺网页活动', '佣兵赏金', "Mercenary's Grand Bounty"],
   ['赛季登录', 'seasonal login'],
   ['三王礼物', "three kings' present"],
   ['新赛季皮肤奖励', 'promising skin reward in new season'],
