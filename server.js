@@ -240,10 +240,49 @@ function attachEventTypes(activities) {
   });
 }
 
+function supplementWeekendSupply(activities) {
+  const settings = excelReader.getEventSettings();
+  const weekendEntries = settings.filter((s) => {
+    if (!s.note.includes('周末幸运补给') || !s.startDate || s.startDate < '2025-09-01') return false;
+    if (!s.endDate) return false;
+    const span = dayDiff(s.startDate, s.endDate);
+    return span <= 7;
+  });
+  if (weekendEntries.length === 0) return activities;
+
+  // Remove the maintenance-date placeholder (周末补给 with null endDate)
+  activities = activities.filter(
+    (a) => !(a.name === '周末补给' && !a.endDate)
+  );
+
+  const existing = activities.filter(
+    (a) => a.name === '周末补给' || a.name.includes('周末补给')
+  );
+
+  for (const we of weekendEntries) {
+    const alreadyCovered = existing.some(
+      (a) => a.startDate && dayDiff(a.startDate, we.startDate) <= 2
+    );
+    if (!alreadyCovered) {
+      activities.push({
+        name: '周末补给',
+        source: '1.0周末补给',
+        startDate: we.startDate,
+        endDate: we.endDate,
+        rewards: [],
+      });
+    }
+  }
+
+  activities.sort((a, b) => (a.startDate || '9').localeCompare(b.startDate || '9'));
+  return activities;
+}
+
 app.get('/api/calendar', (_req, res) => {
   if (!cachedData) return res.json({ activities: [] });
   try {
-    const activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
+    let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
+    activities = supplementWeekendSupply(activities);
     res.json({ activities: attachEventTypes(activities) });
   } catch (err) {
     console.error('Calendar parse error:', err.message);
