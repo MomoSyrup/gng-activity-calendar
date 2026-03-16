@@ -146,16 +146,24 @@ const NAME_ALIASES = [
   ['雪人活动三期', 'Prankster Snowman'],
   ['石像鬼入侵', 'Monster Invasion'],
   ['怪物入侵', 'Monster Invasion'],
-  ['木头人活动', 'Tungtungtung Sahur'],
+  ['木头人活动', 'Tungtungtung Sahur', 'Tungtungtung'],
   ['木头人二期', 'Tungtungtung Sahur'],
   ['箱中果', 'Special Chest'],
   ['排位赛季末冲刺', '赛季末冲刺'],
   ['海岛图荣耀挑战', '海岛挑战', 'Dark Cave Glory challenge'],
   ['海盗图荣耀挑战', '海岛挑战', 'Dark Cave Glory challenge'],
+  ['海岛挑战', 'Dark cave port bring out value'],
   ['拉马丹ID荣誉挑战', 'ramadan'],
   ['周末补给', 'weekend supply'],
   ['周末猛攻', 'weekend Assault'],
   ['99兑换商店', 'Revelry of Ragnarok'],
+  ['圣诞礼物', 'christmas present'],
+  ['藏品线索', 'ice dragon scale clue'],
+  ['许愿活动', 'make a wish'],
+  ['佣兵赏金', "Mercenary's Grand Bounty"],
+  ['赛季登录', 'seasonal login'],
+  ['三王礼物', "three kings' present"],
+  ['新赛季皮肤奖励', 'promising skin reward in new season'],
 ];
 
 // ---- Gantt chart parser (second spreadsheet) ----
@@ -458,6 +466,25 @@ function parseActivities(sheetsData, calendarRows, configRows) {
 
   // Merge CN/EN pairs: if fuzzyMatch + dates overlap, keep CN name
   const merged = mergeCnEnDuplicates(deduped);
+
+  // Translate remaining English names to Chinese via alias table
+  for (const a of merged) {
+    if (hasChinese(a.name)) continue;
+    const lower = a.name.toLowerCase();
+    for (const group of NAME_ALIASES) {
+      const hit = group.some((alias) => {
+        const al = alias.toLowerCase();
+        return lower === al || lower.includes(al) || al.includes(lower);
+      });
+      if (hit) {
+        const cnName = group.find((alias) => hasChinese(alias));
+        if (cnName) {
+          a.name = cnName;
+          break;
+        }
+      }
+    }
+  }
 
   merged.sort((a, b) => (a.startDate || '9').localeCompare(b.startDate || '9'));
   return merged;
