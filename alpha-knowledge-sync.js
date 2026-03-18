@@ -10,7 +10,7 @@ const KNOWLEDGE_FILENAME = 'gng-activities.md';
 let cachedKnowledgeId = null;
 let lastSyncHash = '';
 let lastSyncTime = 0;
-const MIN_SYNC_INTERVAL = 10 * 60 * 1000; // 10 min cooldown
+const MIN_SYNC_INTERVAL = 5 * 60 * 1000; // 5 min cooldown
 
 // --------------- HTTP helpers ---------------
 
@@ -110,174 +110,69 @@ function typeLabel(t) {
 }
 
 function generateMarkdown(activities) {
-  const now = new Date();
+  const now = new Date(Date.now() + 8 * 3600000);
   const todayStr = now.toISOString().slice(0, 10);
-  const timeStr = now.toLocaleString('zh-CN', {
-    timeZone: 'Asia/Singapore',
-    hour12: false,
-  });
+  const timeStr = todayStr + ' ' + now.toISOString().slice(11, 19);
 
   const active = [];
   const upcoming = [];
-  const recent = [];
   const all = [];
 
   for (const a of activities) {
     if (!a.startDate) continue;
     const end = a.endDate || a.startDate;
-    const types = (a.types || []).map(typeLabel).join('、') || '未配置';
-
-    const entry = {
-      name: a.name,
-      start: a.startDate,
-      end: a.endDate || '未知',
-      types,
-    };
+    const types = (a.types || []).map(typeLabel).join(', ') || '未配置';
+    const entry = { name: a.name, start: a.startDate, end: a.endDate || '未知', types };
 
     if (a.startDate <= todayStr && end >= todayStr) {
-      const left = Math.ceil(
-        (new Date(end + 'T00:00:00Z') - new Date(todayStr + 'T00:00:00Z')) /
-          86400000
-      );
-      entry.status = '进行中';
-      entry.extra = left + '天';
+      const left = Math.ceil((new Date(end + 'T00:00:00Z') - new Date(todayStr + 'T00:00:00Z')) / 86400000);
+      entry.daysLeft = left;
       active.push(entry);
     } else if (a.startDate > todayStr) {
-      const until = Math.ceil(
-        (new Date(a.startDate + 'T00:00:00Z') -
-          new Date(todayStr + 'T00:00:00Z')) /
-          86400000
-      );
-      entry.status = '未开始';
-      entry.extra = until + '天后开始';
+      const until = Math.ceil((new Date(a.startDate + 'T00:00:00Z') - new Date(todayStr + 'T00:00:00Z')) / 86400000);
+      entry.daysUntil = until;
       if (until <= 14) upcoming.push(entry);
-    } else {
-      const since = Math.ceil(
-        (new Date(todayStr + 'T00:00:00Z') - new Date(end + 'T00:00:00Z')) /
-          86400000
-      );
-      entry.status = '已结束';
-      entry.extra = since + '天前结束';
-      if (since <= 14) recent.push(entry);
     }
     all.push(entry);
   }
 
-  let md = '# GNG 活动日历数据\n\n';
-  md += '> 数据最后更新时间：' + timeStr + '\n';
-  md += '> 今日日期：' + todayStr + '\n\n';
-  md +=
-    '本文档包含 GNG 游戏的全部活动信息，由系统自动同步。\n';
-  md += '活动类型说明：任务活动(EventTask)、抽奖活动(EventGacha)、';
-  md += '兑换活动(EventRedeem)、新抽奖(EventGachaBravo)、';
-  md += '网页活动(H5)、仅说明页活动、其他活动、未配置。\n\n';
+  const lines = [];
+  lines.push('# GNG 活动日历');
+  lines.push('');
+  lines.push('更新时间: ' + timeStr + ' (北京时间)');
+  lines.push('今日: ' + todayStr);
+  lines.push('');
 
-  // --- Active now ---
-  md += '## 当前进行中的活动（共 ' + active.length + ' 个）\n\n';
+  lines.push('## 正在进行 (' + active.length + '个)');
+  lines.push('');
   if (active.length === 0) {
-    md += '当前没有进行中的活动。\n\n';
+    lines.push('当前没有进行中的活动。');
   } else {
-    md += '| 活动名称 | 开始日期 | 结束日期 | 活动类型 | 剩余天数 |\n';
-    md += '|---|---|---|---|---|\n';
     for (const a of active) {
-      md +=
-        '| ' +
-        a.name +
-        ' | ' +
-        a.start +
-        ' | ' +
-        a.end +
-        ' | ' +
-        a.types +
-        ' | ' +
-        a.extra +
-        ' |\n';
+      lines.push('- ' + a.name + ' | ' + a.start + ' ~ ' + a.end + ' | 类型: ' + a.types + ' | 剩余' + a.daysLeft + '天');
     }
-    md += '\n';
   }
+  lines.push('');
 
-  // --- Upcoming ---
-  md += '## 即将开始的活动（未来14天，共 ' + upcoming.length + ' 个）\n\n';
+  lines.push('## 即将开始 (' + upcoming.length + '个, 未来14天)');
+  lines.push('');
   if (upcoming.length === 0) {
-    md += '未来14天内没有即将开始的活动。\n\n';
+    lines.push('未来14天没有即将开始的活动。');
   } else {
-    md += '| 活动名称 | 开始日期 | 结束日期 | 活动类型 | 距开始 |\n';
-    md += '|---|---|---|---|---|\n';
     for (const a of upcoming) {
-      md +=
-        '| ' +
-        a.name +
-        ' | ' +
-        a.start +
-        ' | ' +
-        a.end +
-        ' | ' +
-        a.types +
-        ' | ' +
-        a.extra +
-        ' |\n';
+      lines.push('- ' + a.name + ' | ' + a.start + ' ~ ' + a.end + ' | 类型: ' + a.types + ' | ' + a.daysUntil + '天后开始');
     }
-    md += '\n';
   }
+  lines.push('');
 
-  // --- Recently ended ---
-  md += '## 近期结束的活动（过去14天，共 ' + recent.length + ' 个）\n\n';
-  if (recent.length === 0) {
-    md += '过去14天内没有结束的活动。\n\n';
-  } else {
-    md += '| 活动名称 | 开始日期 | 结束日期 | 活动类型 | 已结束 |\n';
-    md += '|---|---|---|---|---|\n';
-    for (const a of recent) {
-      md +=
-        '| ' +
-        a.name +
-        ' | ' +
-        a.start +
-        ' | ' +
-        a.end +
-        ' | ' +
-        a.types +
-        ' | ' +
-        a.extra +
-        ' |\n';
-    }
-    md += '\n';
-  }
-
-  // --- Type stats ---
-  md += '## 活动类型统计\n\n';
-  const tc = {};
+  lines.push('## 全部活动 (' + all.length + '个)');
+  lines.push('');
   for (const a of all) {
-    for (const t of a.types.split('、')) {
-      tc[t] = (tc[t] || 0) + 1;
-    }
+    lines.push('- ' + a.name + ' | ' + a.start + ' ~ ' + a.end + ' | 类型: ' + a.types);
   }
-  for (const [t, n] of Object.entries(tc).sort((a, b) => b[1] - a[1])) {
-    md += '- **' + t + '**：' + n + ' 个活动\n';
-  }
-  md += '\n';
+  lines.push('');
 
-  // --- Full list ---
-  md += '## 全部活动列表（共 ' + all.length + ' 个）\n\n';
-  md += '| 活动名称 | 开始日期 | 结束日期 | 活动类型 | 状态 |\n';
-  md += '|---|---|---|---|---|\n';
-  for (const a of all) {
-    md +=
-      '| ' +
-      a.name +
-      ' | ' +
-      a.start +
-      ' | ' +
-      a.end +
-      ' | ' +
-      a.types +
-      ' | ' +
-      a.status +
-      ' |\n';
-  }
-  md += '\n';
-
-  return md;
+  return lines.join('\n');
 }
 
 // --------------- Sync logic ---------------

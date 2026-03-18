@@ -4,5 +4,8 @@ ngrok/
 .cursor/
 deploy.js
 upload.js
+auto-sync.js
+auto-sync.bat
+data/
 public/calendar-preview.html
 public/timeline-preview.html

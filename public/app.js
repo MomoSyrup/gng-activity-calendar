@@ -34,10 +34,10 @@
   function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('gng-theme', theme);
-    themeToggle.innerHTML = theme === 'light' ? '&#9728;' : '&#9790;';
+    themeToggle.innerHTML = theme === 'light' ? '&#x2728;' : '&#9790;';
   }
 
-  themeToggle.innerHTML = getTheme() === 'light' ? '&#9728;' : '&#9790;';
+  themeToggle.innerHTML = getTheme() === 'light' ? '&#x2728;' : '&#9790;';
 
   themeToggle.addEventListener('click', function () {
     setTheme(getTheme() === 'dark' ? 'light' : 'dark');

@@ -5,9 +5,12 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { google } = require('googleapis');
 const path = require('path');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
 const { parseActivities } = require('./parser');
 const excelReader = require('./excel-reader');
 const alphaSync = require('./alpha-knowledge-sync');
+const seatalkBot = require('./seatalk-bot');
 
 const app = express();
 const server = http.createServer(app);
@@ -122,12 +125,127 @@ async function poll() {
   }
 }
 
+// --------------- SeaTalk Bot Callback ---------------
+
+function collectRawBody(req, _res, next) {
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    req.rawBody = Buffer.concat(chunks);
+    next();
+  });
+}
+
+app.post('/callback', collectRawBody, (req, res) => {
+  const rawBody = req.rawBody;
+  const signature = req.headers['signature'] || '';
+
+  console.log(`[SeaTalk] Callback hit, body length=${rawBody.length}, sig=${signature ? 'present' : 'missing'}`);
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBody.toString());
+  } catch {
+    console.error('[SeaTalk] Failed to parse JSON body');
+    return res.status(400).json({ error: 'invalid json' });
+  }
+
+  console.log(`[SeaTalk] Event: ${payload.event_type}`);
+
+  if (!seatalkBot.verifySignature(rawBody, signature)) {
+    console.error('[SeaTalk] Signature verification FAILED');
+    return res.status(403).json({ error: 'invalid signature' });
+  }
+
+  switch (payload.event_type) {
+    case 'event_verification':
+      console.log(`[SeaTalk] Returning challenge: ${payload.event.seatalk_challenge}`);
+      return res.json({ seatalk_challenge: payload.event.seatalk_challenge });
+
+    case 'message_from_bot_subscriber': {
+      const employeeCode = payload.event.employee_code;
+      const userMsg = (payload.event.message && payload.event.message.text && payload.event.message.text.content) || '';
+      console.log(`[SeaTalk] Message from ${employeeCode}: ${userMsg}`);
+
+      const activities = buildTypedActivities();
+      const reply = seatalkBot.buildActivitySummary(activities);
+      seatalkBot.sendTextMessage(employeeCode, reply, true).catch((err) => {
+        console.error('[SeaTalk] Reply failed:', err.message);
+      });
+
+      return res.json({ code: 0, message: 'ok' });
+    }
+
+    case 'bot_added_to_group_chat': {
+      const groupId = payload.event.group && payload.event.group.group_id;
+      const groupName = payload.event.group && payload.event.group.group_name;
+      console.log(`[SeaTalk] ★ Bot added to group: ${groupName} (${groupId})`);
+      return res.json({ code: 0, message: 'ok' });
+    }
+
+    default:
+      console.log(`[SeaTalk] Unhandled event: ${payload.event_type}`);
+      return res.json({ code: 0, message: 'ok' });
+  }
+});
+
 // --------------- Static Files & REST API ---------------
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/data', (_req, res) => {
   res.json({ data: cachedData });
+});
+
+app.post('/api/seatalk-push', (req, res) => {
+  if (req.headers['x-internal-key'] !== (process.env.SEATALK_SIGNING_SECRET || '')) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const activities = buildTypedActivities();
+  const summary = seatalkBot.buildActivitySummary(activities);
+  seatalkBot.pushToGroup(summary, true).then((resp) => {
+    res.json({ ok: true, groupId: process.env.SEATALK_GROUP_ID, resp });
+  }).catch((err) => {
+    res.status(500).json({ error: err.message });
+  });
+});
+
+// --------------- GitHub Webhook Auto-Deploy ---------------
+
+app.post('/api/deploy', collectRawBody, (req, res) => {
+  const secret = process.env.DEPLOY_SECRET;
+  if (!secret) return res.status(500).json({ error: 'DEPLOY_SECRET not configured' });
+
+  const sig = req.headers['x-hub-signature-256'] || '';
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
+  if (sig !== expected) {
+    console.error('[Deploy] Invalid signature');
+    return res.status(403).json({ error: 'invalid signature' });
+  }
+
+  const event = req.headers['x-github-event'];
+  if (event === 'ping') {
+    console.log('[Deploy] GitHub ping received');
+    return res.json({ ok: true, msg: 'pong' });
+  }
+
+  if (event !== 'push') {
+    return res.json({ ok: true, msg: 'ignored event: ' + event });
+  }
+
+  console.log('[Deploy] Push event received, pulling and restarting...');
+  res.json({ ok: true, msg: 'deploying' });
+
+  try {
+    const pullOut = execSync('git pull origin master', { cwd: __dirname, timeout: 30000 }).toString();
+    console.log('[Deploy] git pull:', pullOut.trim());
+    const npmOut = execSync('npm install --production', { cwd: __dirname, timeout: 60000 }).toString();
+    console.log('[Deploy] npm install:', npmOut.trim().slice(-200));
+    const pmOut = execSync('pm2 restart gng-activity-calendar', { timeout: 15000 }).toString();
+    console.log('[Deploy] pm2 restart:', pmOut.trim().slice(-200));
+  } catch (err) {
+    console.error('[Deploy] Error:', err.message);
+  }
 });
 
 function dayDiff(d1, d2) {
@@ -227,6 +345,8 @@ function attachEventTypes(activities) {
       const matchedTypes = typeMap[bestMatch.eventId] || [];
       return {
         ...a,
+        startDate: bestMatch.startDate || a.startDate,
+        endDate: bestMatch.endDate || a.endDate,
         eventId: bestMatch.eventId,
         excelName: bestMatch.note || bestMatch.name,
         types:
@@ -350,6 +470,11 @@ server.listen(PORT, '0.0.0.0', async () => {
 
   // Periodic re-sync (every 30 min) to keep "today" calculations fresh
   setInterval(triggerAlphaSync, 30 * 60 * 1000);
+
+  // SeaTalk daily group push at 10:30 Beijing time (UTC+8)
+  if (process.env.SEATALK_APP_ID) {
+    seatalkBot.scheduleDailyPush(10, 30, buildTypedActivities);
+  }
 
   setInterval(poll, POLL_INTERVAL);
 });
