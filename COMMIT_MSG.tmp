@@ -1,0 +1,8 @@
+v0.3.0: SeaTalk Bot + GitHub auto-deploy + bug fixes
+
+- Add SeaTalk Bot with private chat reply and daily group push
+- Add GitHub Webhook auto-deploy endpoint (/api/deploy)
+- Fix activity end dates: use Excel dates over Gantt fallback
+- Redesign both themes to dark style matching game aesthetic
+- Simplify Alpha Knowledge markdown format
+- Fix calendar emoji showing fixed 17
