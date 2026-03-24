@@ -167,11 +167,10 @@ app.post('/callback', collectRawBody, (req, res) => {
       const userMsg = (payload.event.message && payload.event.message.text && payload.event.message.text.content) || '';
       console.log(`[SeaTalk] Message from ${employeeCode}: ${userMsg}`);
 
-      const activities = buildTypedActivities();
-      const reply = seatalkBot.buildActivitySummary(activities);
-      seatalkBot.sendTextMessage(employeeCode, reply, true).catch((err) => {
-        console.error('[SeaTalk] Reply failed:', err.message);
-      });
+      activitiesForSeaTalkPush()
+        .then((activities) => seatalkBot.buildActivitySummary(activities))
+        .then((reply) => seatalkBot.sendTextMessage(employeeCode, reply, true))
+        .catch((err) => console.error('[SeaTalk] Reply failed:', err.message));
 
       return res.json({ code: 0, message: 'ok' });
     }
@@ -201,13 +200,15 @@ app.post('/api/seatalk-push', (req, res) => {
   if (req.headers['x-internal-key'] !== (process.env.SEATALK_SIGNING_SECRET || '')) {
     return res.status(403).json({ error: 'forbidden' });
   }
-  const activities = buildTypedActivities();
-  const summary = seatalkBot.buildActivitySummary(activities);
-  seatalkBot.pushToGroup(summary, true).then((resp) => {
-    res.json({ ok: true, groupId: process.env.SEATALK_GROUP_ID, resp });
-  }).catch((err) => {
-    res.status(500).json({ error: err.message });
-  });
+  activitiesForSeaTalkPush()
+    .then((activities) => seatalkBot.buildActivitySummary(activities))
+    .then((summary) => seatalkBot.pushToGroup(summary, true))
+    .then((resp) => {
+      res.json({ ok: true, groupId: process.env.SEATALK_GROUP_ID, resp });
+    })
+    .catch((err) => {
+      res.status(500).json({ error: err.message });
+    });
 });
 
 // --------------- GitHub Webhook Auto-Deploy ---------------
@@ -407,6 +408,19 @@ function buildTypedActivities() {
   return attachEventTypes(activities);
 }
 
+/** 与网页一致：先拉取最新 Sheets，再读同一套 /api/calendar JSON */
+async function activitiesForSeaTalkPush() {
+  await poll();
+  const localBase = `http://127.0.0.1:${PORT}`;
+  try {
+    const acts = await seatalkBot.fetchCalendarActivities(localBase);
+    if (acts && acts.length > 0) return acts;
+  } catch (err) {
+    console.warn('[SeaTalk] fetchCalendarActivities fallback:', err.message);
+  }
+  return buildTypedActivities();
+}
+
 function triggerAlphaSync() {
   const apiKey = process.env.ALPHA_KNOWLEDGE_API_KEY;
   if (!apiKey) return;
@@ -471,9 +485,9 @@ server.listen(PORT, '0.0.0.0', async () => {
   // Periodic re-sync (every 30 min) to keep "today" calculations fresh
   setInterval(triggerAlphaSync, 30 * 60 * 1000);
 
-  // SeaTalk daily group push at 10:30 Beijing time (UTC+8)
+  // SeaTalk workday group push at 10:30 Beijing time (UTC+8)
   if (process.env.SEATALK_APP_ID) {
-    seatalkBot.scheduleDailyPush(10, 30, buildTypedActivities);
+    seatalkBot.scheduleDailyPush(10, 30, activitiesForSeaTalkPush);
   }
 
   setInterval(poll, POLL_INTERVAL);
