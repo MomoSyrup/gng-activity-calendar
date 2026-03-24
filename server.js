@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { google } = require('googleapis');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { parseActivities } = require('./parser');
@@ -55,6 +56,7 @@ let cachedData = null;
 let cachedDataJson = null;
 let cachedCalendarRows = null;
 let cachedConfigRows = null;
+let excelWatchTimer = null;
 
 async function getSheetNames(spreadsheetId) {
   const meta = await sheets.spreadsheets.get({
@@ -436,6 +438,41 @@ function triggerAlphaSync() {
   }
 }
 
+function triggerUiRefreshAfterExcelReload(reason) {
+  if (!cachedData) return;
+  try {
+    io.emit('sheet:update', cachedData);
+    triggerAlphaSync();
+    console.log(
+      `[excel-reader] Reload triggered by ${reason} – pushing update to ${io.engine.clientsCount} client(s)`
+    );
+  } catch (err) {
+    console.error('[excel-reader] Post-reload refresh failed:', err.message);
+  }
+}
+
+function setupExcelRealtimeWatch() {
+  const excelPath = process.env.EVENT_EXCEL_PATH;
+  if (!excelPath) {
+    console.warn('[excel-reader] EVENT_EXCEL_PATH not configured, realtime watch disabled');
+    return;
+  }
+
+  const watchIntervalMs = parseInt(process.env.EXCEL_WATCH_INTERVAL_MS, 10) || 2000;
+  fs.watchFile(excelPath, { interval: watchIntervalMs }, (curr, prev) => {
+    if (curr.mtimeMs === 0) return;
+    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
+
+    if (excelWatchTimer) clearTimeout(excelWatchTimer);
+    excelWatchTimer = setTimeout(() => {
+      excelReader.load(excelPath);
+      triggerUiRefreshAfterExcelReload('local Event.xlsx change');
+    }, 400);
+  });
+
+  console.log(`[excel-reader] Realtime watch enabled: ${excelPath} (interval ${watchIntervalMs}ms)`);
+}
+
 app.get('/api/calendar', (_req, res) => {
   if (!cachedData) return res.json({ activities: [] });
   try {
@@ -466,7 +503,9 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running at http://localhost:${PORT}`);
 
   excelReader.load(process.env.EVENT_EXCEL_PATH);
-  setInterval(() => excelReader.load(), 3600000);
+  setupExcelRealtimeWatch();
+  // Fallback periodic reload in case host file watch misses events.
+  setInterval(() => excelReader.load(), 10 * 60 * 1000);
 
   try {
     const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
