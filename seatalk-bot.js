@@ -190,6 +190,16 @@ function daysRemaining(todayStr, endStr) {
   return Math.round((e - t) / 86400000);
 }
 
+function getBeijingTodayYmd() {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return fmt.format(new Date());
+}
+
 function activityMatchesWebActive(a, todayStr) {
   if (!a.startDate) return false;
   const end = a.endDate || a.startDate;
@@ -217,7 +227,7 @@ function buildActivitySummary(activities, options) {
 
   if (!activities || activities.length === 0) return '当前暂无活动数据。';
 
-  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  const today = getBeijingTodayYmd();
 
   const active = activities.filter((a) => activityMatchesWebActive(a, today));
   active.sort((a, b) => (a.endDate || a.startDate || '').localeCompare(b.endDate || b.startDate || ''));
@@ -228,7 +238,7 @@ function buildActivitySummary(activities, options) {
   const lines = ['**GNG 活动日历**', `🗓️ ${today}`, ''];
 
   if (active.length > 0) {
-    lines.push(`🟢 正在进行 (${active.length})`);
+    lines.push(`**🟢 正在进行 (${active.length})**`);
     for (const a of active) {
       const type = a.types ? a.types[0] : '';
       const end = a.endDate || a.startDate || '?';
@@ -240,20 +250,23 @@ function buildActivitySummary(activities, options) {
       lines.push(`• ${catPrefix}${title} [${type}] → ${end} (剩${remStr}天)`);
     }
   } else {
-    lines.push('🟢 暂无正在进行的活动');
+    lines.push('**🟢 正在进行 (0)**');
+    lines.push('• 暂无正在进行的活动');
   }
 
   lines.push('');
 
+  lines.push(`**🔜 即将开始 (${upcoming.length})**`);
   if (upcoming.length > 0) {
     const shown = upcoming.slice(0, 5);
-    lines.push(`🔜 即将开始 (${upcoming.length})`);
     for (const a of shown) {
       const type = a.types ? a.types[0] : '';
       const title = activityLineTitle(a);
       lines.push(`• ${title} [${type}] ${a.startDate} 开始`);
     }
     if (upcoming.length > 5) lines.push(`...还有 ${upcoming.length - 5} 个`);
+  } else {
+    lines.push('• 暂无即将开始的活动');
   }
 
   const linkBase = String(calendarBaseUrl).replace(/\/$/, '');

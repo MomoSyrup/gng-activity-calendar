@@ -57,7 +57,7 @@
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.2</button>
+      <button class="version-tag" id="version-btn">v0.3.3</button>
     </footer>
   </div>
 
@@ -68,6 +68,17 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.3</span>
+            <span class="changelog-date">2026-03-24</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复服务器端 Google Sheets 限流时页面活动模块缺失的问题，读取失败不再覆盖上次有效配置数据</li>
+            <li>将默认数据轮询间隔调整为 30 秒，降低限流触发概率并提升服务器与本地页面一致性</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">

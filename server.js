@@ -19,7 +19,7 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2;
-const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL, 10) || 5000;
+const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL, 10) || 30000;
 
 // --------------- Google Sheets Auth (OAuth2) ---------------
 
@@ -106,11 +106,13 @@ async function poll() {
     const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
     const json = JSON.stringify(data);
 
+    // Keep last successful Sheet 2 snapshot when quota/network errors happen.
+    if (sheet2.calendarRows) cachedCalendarRows = sheet2.calendarRows;
+    if (sheet2.configRows) cachedConfigRows = sheet2.configRows;
+
     if (json !== cachedDataJson) {
       cachedData = data;
       cachedDataJson = json;
-      cachedCalendarRows = sheet2.calendarRows;
-      cachedConfigRows = sheet2.configRows;
       const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
       console.log(
         `[${new Date().toLocaleTimeString()}] Data changed – ` +
