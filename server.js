@@ -516,7 +516,12 @@ function supplementWeekendSupply(activities) {
 }
 
 function buildTypedActivities() {
-  if (!cachedData) return cachedActivitiesSnapshot;
+  if (!cachedData) {
+    let fallback = Array.isArray(cachedActivitiesSnapshot) ? cachedActivitiesSnapshot : [];
+    fallback = fallback.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has((a && a.name) || ''));
+    fallback = applyManualDateCorrections(fallback);
+    return fallback;
+  }
   let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
   activities = activities.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has(a.name || ''));
   activities = applyManualDateCorrections(activities);
