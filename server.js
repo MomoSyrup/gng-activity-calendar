@@ -337,6 +337,23 @@ function nameMatch(gsName, excelNote, excelTxtName) {
   return false;
 }
 
+function normalizeNameForMatch(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[\s_\-()（）【】\[\]{}:：/\\.,，。'"`~!@#$%^&*+|<>?]/g, '');
+}
+
+function isStrongSettingNameMatch(activityName, setting) {
+  const a = normalizeNameForMatch(activityName);
+  const note = normalizeNameForMatch(setting.note);
+  const name = normalizeNameForMatch(setting.name);
+  if (!a || a.length < 2) return false;
+  return (
+    (note && (a.includes(note) || note.includes(a))) ||
+    (name && (a.includes(name) || name.includes(a)))
+  );
+}
+
 function isWebActivity(...fields) {
   const combined = fields.map((s) => (s || '').toLowerCase()).join(' ');
   return combined.includes('h5') || combined.includes('网页');
@@ -353,8 +370,14 @@ function attachEventTypes(activities) {
   const settings = excelReader.getEventSettings();
   const typeMap = excelReader.getEventTypes();
   if (settings.length === 0) return activities;
+  const countsByName = activities.reduce((m, a) => {
+    const k = a.name || '';
+    m[k] = (m[k] || 0) + 1;
+    return m;
+  }, {});
 
-  return activities.map((a) => {
+  const result = [];
+  for (const a of activities) {
     let bestMatch = null;
     let bestScore = Infinity;
 
@@ -386,9 +409,34 @@ function attachEventTypes(activities) {
       }
     }
 
+    // When a name appears once in sheet data but has multiple strong Event rows,
+    // expand it into multiple periods so all Event phases are visible in UI.
+    if ((countsByName[a.name || ''] || 0) === 1) {
+      const periodMatches = settings
+        .filter((s) => isStrongSettingNameMatch(a.name, s) && s.startDate && s.endDate)
+        .sort((x, y) => (x.startDate || '').localeCompare(y.startDate || ''));
+      if (periodMatches.length > 1) {
+        for (const s of periodMatches) {
+          const matchedTypes = typeMap[s.eventId] || [];
+          result.push({
+            ...a,
+            startDate: s.startDate || a.startDate,
+            endDate: s.endDate || a.endDate,
+            eventId: s.eventId,
+            excelName: s.note || s.name,
+            types:
+              matchedTypes.length > 0
+                ? matchedTypes
+                : classifyUntyped(s.eventId, s.note, s.name, a.name, a.category),
+          });
+        }
+        continue;
+      }
+    }
+
     if (bestMatch) {
       const matchedTypes = typeMap[bestMatch.eventId] || [];
-      return {
+      result.push({
         ...a,
         startDate: bestMatch.startDate || a.startDate,
         endDate: bestMatch.endDate || a.endDate,
@@ -398,13 +446,16 @@ function attachEventTypes(activities) {
           matchedTypes.length > 0
             ? matchedTypes
             : classifyUntyped(bestMatch.eventId, bestMatch.note, bestMatch.name, a.name, a.category),
-      };
+      });
+      continue;
     }
     if (isWebActivity(a.name, a.category)) {
-      return { ...a, eventId: null, excelName: null, types: ['网页活动'] };
+      result.push({ ...a, eventId: null, excelName: null, types: ['网页活动'] });
+      continue;
     }
-    return { ...a, eventId: null, excelName: null, types: ['未配置'] };
-  });
+    result.push({ ...a, eventId: null, excelName: null, types: ['未配置'] });
+  }
+  return result;
 }
 
 function supplementWeekendSupply(activities) {
