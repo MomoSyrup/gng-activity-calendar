@@ -325,6 +325,10 @@ const NAME_KEYWORDS = [
   ['树', ['树', 'tree']],
 ];
 
+const EXCLUDED_ACTIVITY_NAMES = new Set([
+  '网页排位冲刺活动',
+]);
+
 function nameMatch(gsName, excelNote, excelTxtName) {
   const gs = (gsName || '').toLowerCase();
   const note = (excelNote || '').toLowerCase();
@@ -500,6 +504,7 @@ function supplementWeekendSupply(activities) {
 function buildTypedActivities() {
   if (!cachedData) return cachedActivitiesSnapshot;
   let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
+  activities = activities.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has(a.name || ''));
   activities = supplementWeekendSupply(activities);
   activities = attachEventTypes(activities);
   if (activities.length > 0) cachedActivitiesSnapshot = activities;
