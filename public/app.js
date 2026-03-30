@@ -295,6 +295,50 @@
 
   function getColor(name) { return activityColorMap[name] || '#999'; }
 
+  function activityIdentityKey(a) {
+    return [
+      (a && a.name) || '',
+      (a && a.startDate) || '',
+      (a && a.endDate) || '',
+      (a && a.source) || '',
+      (a && a.category) || '',
+    ].join('|');
+  }
+
+  function buildPeriodIndexMap(activities) {
+    var byName = {};
+    (activities || []).forEach(function (a) {
+      var name = (a && a.name) || '';
+      if (!name) return;
+      if (!byName[name]) byName[name] = [];
+      byName[name].push(a);
+    });
+
+    var map = {};
+    Object.keys(byName).forEach(function (name) {
+      var list = byName[name].slice().sort(function (x, y) {
+        var xs = (x.startDate || '9999-99-99');
+        var ys = (y.startDate || '9999-99-99');
+        if (xs !== ys) return xs.localeCompare(ys);
+        var xe = (x.endDate || x.startDate || '9999-99-99');
+        var ye = (y.endDate || y.startDate || '9999-99-99');
+        return xe.localeCompare(ye);
+      });
+      if (list.length <= 1) return;
+      list.forEach(function (a, i) {
+        map[activityIdentityKey(a)] = i + 1;
+      });
+    });
+
+    return map;
+  }
+
+  function getDisplayName(a, periodMap) {
+    var base = (a && a.name) || '';
+    var idx = periodMap ? periodMap[activityIdentityKey(a)] : null;
+    return idx ? (base + '（第' + idx + '期）') : base;
+  }
+
   // -------- Active Now --------
 
   function renderActiveNow() {
@@ -315,6 +359,7 @@
     if (active.length === 0) { container.innerHTML = ''; return; }
 
     var todayMs = new Date().setHours(0, 0, 0, 0);
+    var periodMap = buildPeriodIndexMap(calendarActivities);
 
     var html = '<div class="active-now-header">';
     html += '<span class="active-now-pulse"></span>';
@@ -341,7 +386,7 @@
 
       html += '<div class="active-now-card-top">';
       html += '<span class="active-now-dot" style="background:' + c + ';color:' + c + '"></span>';
-      html += '<span class="active-now-name" title="' + escapeAttr(a.name) + '">' + escapeHtml(a.name) + '</span>';
+      html += '<span class="active-now-name" title="' + escapeAttr(getDisplayName(a, periodMap)) + '">' + escapeHtml(getDisplayName(a, periodMap)) + '</span>';
       html += '</div>';
 
       html += '<div class="active-now-card-mid">';
@@ -420,9 +465,10 @@
     }
 
     renderMiniCalendar(daysInMonth, startDow, todayStr, monthActivities);
-    renderSidebar(monthActivities);
-    renderSwimlaneTimeline(monthActivities, daysInMonth);
-    renderActivityCards(monthActivities, document.getElementById('activity-detail'));
+    var periodMap = buildPeriodIndexMap(monthActivities);
+    renderSidebar(monthActivities, periodMap);
+    renderSwimlaneTimeline(monthActivities, daysInMonth, periodMap);
+    renderActivityCards(monthActivities, document.getElementById('activity-detail'), periodMap);
   }
 
   // -------- Mini Calendar --------
@@ -461,14 +507,14 @@
         bodyEl.querySelectorAll('.mini-cal-day').forEach(function (c) {
           c.classList.toggle('selected', c.getAttribute('data-date') === selectedDate);
         });
-        renderSidebar(monthActivities);
+        renderSidebar(monthActivities, buildPeriodIndexMap(monthActivities));
       });
     });
   }
 
   // -------- Sidebar --------
 
-  function renderSidebar(monthActivities) {
+  function renderSidebar(monthActivities, periodMap) {
     var panel = document.getElementById('sidebar-panel');
     if (!panel) return;
 
@@ -484,11 +530,13 @@
     } else {
       html += '<div class="sidebar-list">';
       acts.forEach(function (a) {
+        var displayName = getDisplayName(a, periodMap);
+        var activityKey = activityIdentityKey(a);
         var c = getColor(a.name);
-        html += '<div class="sidebar-item" data-name="' + escapeAttr(a.name) + '">';
+        html += '<div class="sidebar-item" data-key="' + escapeAttr(activityKey) + '">';
         html += '<span class="sidebar-dot" style="background:' + c + ';color:' + c + '"></span>';
         html += '<div class="sidebar-info">';
-        html += '<div class="sidebar-name">' + escapeHtml(a.name) + '</div>';
+        html += '<div class="sidebar-name">' + escapeHtml(displayName) + '</div>';
         html += '<div class="sidebar-date">' + escapeHtml(a.startDate || '未定') + ' ~ ' + escapeHtml(a.endDate || '未定') + '</div>';
         html += '</div>';
         if (a.types && a.types.length > 0) {
@@ -503,8 +551,8 @@
 
     panel.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.addEventListener('click', function () {
-        var name = item.getAttribute('data-name');
-        var card = document.querySelector('.activity-card[data-name="' + name + '"]');
+        var key = item.getAttribute('data-key');
+        var card = document.querySelector('.activity-card[data-key="' + key + '"]');
         if (card) {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           card.classList.add('highlight');
@@ -516,7 +564,7 @@
 
   // -------- Swimlane Timeline --------
 
-  function renderSwimlaneTimeline(monthActivities, daysInMonth) {
+  function renderSwimlaneTimeline(monthActivities, daysInMonth, periodMap) {
     var section = document.getElementById('timeline-section');
     if (monthActivities.length === 0) { section.innerHTML = ''; return; }
 
@@ -576,7 +624,7 @@
         }
 
         html += '<div class="swimlane-row">';
-        html += '<span class="swimlane-name" title="' + escapeAttr(a.name) + '">' + escapeHtml(a.name) + '</span>';
+        html += '<span class="swimlane-name" title="' + escapeAttr(getDisplayName(a, periodMap)) + '">' + escapeHtml(getDisplayName(a, periodMap)) + '</span>';
         if (firstType) {
           html += '<span class="swimlane-tag type-tag ' + tagCls + '">' + escapeHtml(firstType) + '</span>';
         }
@@ -600,7 +648,7 @@
 
   // -------- Activity Cards --------
 
-  function renderActivityCards(monthActivities, detailEl) {
+  function renderActivityCards(monthActivities, detailEl, periodMap) {
     if (monthActivities.length === 0) {
       detailEl.innerHTML = '<p class="no-activities">本月暂无已排期的活动</p>';
       return;
@@ -610,11 +658,13 @@
     html += '<div class="activity-list">';
 
     monthActivities.forEach(function (a) {
+      var displayName = getDisplayName(a, periodMap);
+      var activityKey = activityIdentityKey(a);
       var c = getColor(a.name);
-      html += '<div class="activity-card" data-name="' + escapeAttr(a.name) + '">';
+      html += '<div class="activity-card" data-key="' + escapeAttr(activityKey) + '">';
       html += '<div class="activity-card-header">';
       html += '<span class="activity-dot" style="background:' + c + ';color:' + c + '"></span>';
-      html += '<strong>' + escapeHtml(a.name) + '</strong>';
+      html += '<strong>' + escapeHtml(displayName) + '</strong>';
       html += '<span class="activity-source">' + escapeHtml(a.source) + '</span>';
       html += '</div>';
       if (a.types && a.types.length > 0) {
