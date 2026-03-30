@@ -329,6 +329,20 @@ const EXCLUDED_ACTIVITY_NAMES = new Set([
   '网页排位冲刺活动',
 ]);
 
+function applyManualDateCorrections(activities) {
+  return activities.map((a) => {
+    if (
+      a &&
+      a.name === '赛季组队冲刺网页活动' &&
+      a.startDate === '2026-03-26' &&
+      a.endDate === '2026-04-08'
+    ) {
+      return { ...a, endDate: '2026-04-14' };
+    }
+    return a;
+  });
+}
+
 function nameMatch(gsName, excelNote, excelTxtName) {
   const gs = (gsName || '').toLowerCase();
   const note = (excelNote || '').toLowerCase();
@@ -505,6 +519,7 @@ function buildTypedActivities() {
   if (!cachedData) return cachedActivitiesSnapshot;
   let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
   activities = activities.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has(a.name || ''));
+  activities = applyManualDateCorrections(activities);
   activities = supplementWeekendSupply(activities);
   activities = attachEventTypes(activities);
   if (activities.length > 0) cachedActivitiesSnapshot = activities;
