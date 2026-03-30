@@ -370,12 +370,6 @@ function attachEventTypes(activities) {
   const settings = excelReader.getEventSettings();
   const typeMap = excelReader.getEventTypes();
   if (settings.length === 0) return activities;
-  const countsByName = activities.reduce((m, a) => {
-    const k = a.name || '';
-    m[k] = (m[k] || 0) + 1;
-    return m;
-  }, {});
-
   const result = [];
   for (const a of activities) {
     let bestMatch = null;
@@ -409,29 +403,27 @@ function attachEventTypes(activities) {
       }
     }
 
-    // When a name appears once in sheet data but has multiple strong Event rows,
-    // expand it into multiple periods so all Event phases are visible in UI.
-    if ((countsByName[a.name || ''] || 0) === 1) {
-      const periodMatches = settings
-        .filter((s) => isStrongSettingNameMatch(a.name, s) && s.startDate && s.endDate)
-        .sort((x, y) => (x.startDate || '').localeCompare(y.startDate || ''));
-      if (periodMatches.length > 1) {
-        for (const s of periodMatches) {
-          const matchedTypes = typeMap[s.eventId] || [];
-          result.push({
-            ...a,
-            startDate: s.startDate || a.startDate,
-            endDate: s.endDate || a.endDate,
-            eventId: s.eventId,
-            excelName: s.note || s.name,
-            types:
-              matchedTypes.length > 0
-                ? matchedTypes
-                : classifyUntyped(s.eventId, s.note, s.name, a.name, a.category),
-          });
-        }
-        continue;
+    // Expand into multiple phases when Event sheet contains multiple
+    // strong periods for the same activity name.
+    const periodMatches = settings
+      .filter((s) => isStrongSettingNameMatch(a.name, s) && s.startDate && s.endDate)
+      .sort((x, y) => (x.startDate || '').localeCompare(y.startDate || ''));
+    if (periodMatches.length > 1) {
+      for (const s of periodMatches) {
+        const matchedTypes = typeMap[s.eventId] || [];
+        result.push({
+          ...a,
+          startDate: s.startDate || a.startDate,
+          endDate: s.endDate || a.endDate,
+          eventId: s.eventId,
+          excelName: s.note || s.name,
+          types:
+            matchedTypes.length > 0
+              ? matchedTypes
+              : classifyUntyped(s.eventId, s.note, s.name, a.name, a.category),
+        });
       }
+      continue;
     }
 
     if (bestMatch) {
@@ -455,7 +447,15 @@ function attachEventTypes(activities) {
     }
     result.push({ ...a, eventId: null, excelName: null, types: ['未配置'] });
   }
-  return result;
+  const dedup = [];
+  const seen = new Set();
+  for (const item of result) {
+    const key = `${item.name || ''}|${item.startDate || ''}|${item.endDate || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(item);
+  }
+  return dedup;
 }
 
 function supplementWeekendSupply(activities) {

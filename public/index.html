@@ -65,7 +65,7 @@
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.7</button>
+      <button class="version-tag" id="version-btn">v0.3.8</button>
     </footer>
   </div>
 
@@ -76,6 +76,17 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.8</span>
+            <span class="changelog-date">2026-03-30</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复多期拆分去重逻辑，避免单期主数据覆盖 Event 表多期区间</li>
+            <li>进一步修复 99 兑换商店展示，确保可按 Event 表看到完整五期数据</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">
