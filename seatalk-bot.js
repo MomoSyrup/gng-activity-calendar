@@ -143,6 +143,22 @@ async function sendGroupMessage(groupId, content, markdown) {
   return resp;
 }
 
+async function sendGroupImageMessageBase64(groupId, base64Content) {
+  const resp = await apiCallAuth('POST', '/messaging/v2/group_chat', {
+    group_id: groupId,
+    message: {
+      tag: 'image',
+      image: { content: base64Content },
+    },
+  });
+  if (resp.code !== 0) {
+    console.error('[SeaTalk] Send group image failed:', resp);
+  } else {
+    console.log(`[SeaTalk] Group image sent to ${groupId}`);
+  }
+  return resp;
+}
+
 // ---------- Calendar API (same JSON as web /api/calendar) ----------
 
 function fetchCalendarActivities(baseUrl) {
@@ -416,6 +432,7 @@ module.exports = {
   getAccessToken,
   sendTextMessage,
   sendGroupMessage,
+  sendGroupImageMessageBase64,
   fetchCalendarActivities,
   buildActivitySummary,
   pushToGroup,
