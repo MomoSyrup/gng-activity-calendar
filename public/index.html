@@ -65,7 +65,7 @@
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.8</button>
+      <button class="version-tag" id="version-btn">v0.3.9</button>
     </footer>
   </div>
 
@@ -76,6 +76,17 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.9</span>
+            <span class="changelog-date">2026-03-30</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复 Event 误匹配：取消仅按日期接近的绑定逻辑，改为必须名称命中后才允许绑定</li>
+            <li>修复“网页排位冲刺活动”被错误绑定为周末补给的问题，避免出现无效活动条目</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">

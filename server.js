@@ -378,24 +378,25 @@ function attachEventTypes(activities) {
     for (const s of settings) {
       const sd = dayDiff(a.startDate, s.startDate);
       const ed = dayDiff(a.endDate, s.endDate);
-      const hasNameHit = nameMatch(a.name, s.note, s.name);
+      const hasNameHit =
+        nameMatch(a.name, s.note, s.name) || isStrongSettingNameMatch(a.name, s);
       const nameBonus = hasNameHit ? -0.5 : 0;
 
       let score;
 
-      if (hasNameHit) {
-        if (sd <= 3 && ed <= 3) score = sd + ed;
-        else if (sd <= 3 && ed <= 7) score = 5 + sd + ed;
-        else if (sd <= 7 && ed <= 7) score = 15 + sd + ed;
-        else if (sd <= 3 && ed <= 30) score = 30 + sd + ed;
-        else if (sd <= 7 && ed <= 30) score = 50 + sd + ed;
-        else if (sd <= 3 && ed === Infinity) score = 80 + sd;
-        else if (sd === Infinity && ed === Infinity) score = 90;
-        else continue;
-      } else {
-        if (sd + ed <= 2) score = 100 + sd + ed;
-        else continue;
-      }
+      // Strict rule: only allow Event binding when activity names match.
+      // This avoids date-only false positives like unrelated activities
+      // being attached to "周末补给".
+      if (!hasNameHit) continue;
+
+      if (sd <= 3 && ed <= 3) score = sd + ed;
+      else if (sd <= 3 && ed <= 7) score = 5 + sd + ed;
+      else if (sd <= 7 && ed <= 7) score = 15 + sd + ed;
+      else if (sd <= 3 && ed <= 30) score = 30 + sd + ed;
+      else if (sd <= 7 && ed <= 30) score = 50 + sd + ed;
+      else if (sd <= 3 && ed === Infinity) score = 80 + sd;
+      else if (sd === Infinity && ed === Infinity) score = 90;
+      else continue;
 
       if (score < bestScore) {
         bestScore = score;
