@@ -456,6 +456,7 @@
       var e = a.endDate || a.startDate;
       return a.startDate <= monthEnd && e >= monthStart;
     }));
+    var globalPeriodMap = buildPeriodIndexMap(calendarActivities);
 
     if (!selectedDate) selectedDate = todayStr;
     var selParts = selectedDate.split('-');
@@ -464,16 +465,15 @@
       selectedDate = monthStart;
     }
 
-    renderMiniCalendar(daysInMonth, startDow, todayStr, monthActivities);
-    var periodMap = buildPeriodIndexMap(monthActivities);
-    renderSidebar(monthActivities, periodMap);
-    renderSwimlaneTimeline(monthActivities, daysInMonth, periodMap);
-    renderActivityCards(monthActivities, document.getElementById('activity-detail'), periodMap);
+    renderMiniCalendar(daysInMonth, startDow, todayStr, monthActivities, globalPeriodMap);
+    renderSidebar(monthActivities, globalPeriodMap);
+    renderSwimlaneTimeline(monthActivities, daysInMonth, globalPeriodMap);
+    renderActivityCards(monthActivities, document.getElementById('activity-detail'), globalPeriodMap);
   }
 
   // -------- Mini Calendar --------
 
-  function renderMiniCalendar(daysInMonth, startDow, todayStr, monthActivities) {
+  function renderMiniCalendar(daysInMonth, startDow, todayStr, monthActivities, periodMap) {
     var bodyEl = document.getElementById('calendar-body');
     var html = '<div class="mini-cal-panel"><div class="mini-cal-grid">';
 
@@ -507,7 +507,7 @@
         bodyEl.querySelectorAll('.mini-cal-day').forEach(function (c) {
           c.classList.toggle('selected', c.getAttribute('data-date') === selectedDate);
         });
-        renderSidebar(monthActivities, buildPeriodIndexMap(monthActivities));
+        renderSidebar(monthActivities, periodMap);
       });
     });
   }
