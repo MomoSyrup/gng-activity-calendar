@@ -222,6 +222,52 @@ function activityLineTitle(a) {
   return n;
 }
 
+function activityIdentityKey(a) {
+  return [
+    (a && a.name) || '',
+    (a && a.startDate) || '',
+    (a && a.endDate) || '',
+    (a && a.source) || '',
+    (a && a.category) || '',
+  ].join('|');
+}
+
+function buildPeriodIndexMap(activities) {
+  const byName = {};
+  for (const a of activities || []) {
+    const name = (a && a.name) || '';
+    if (!name) continue;
+    if (!byName[name]) byName[name] = [];
+    byName[name].push(a);
+  }
+
+  const periodMap = {};
+  for (const name of Object.keys(byName)) {
+    const list = byName[name]
+      .slice()
+      .sort((x, y) => {
+        const xs = x.startDate || '9999-99-99';
+        const ys = y.startDate || '9999-99-99';
+        if (xs !== ys) return xs.localeCompare(ys);
+        const xe = x.endDate || x.startDate || '9999-99-99';
+        const ye = y.endDate || y.startDate || '9999-99-99';
+        return xe.localeCompare(ye);
+      });
+    if (list.length <= 1) continue;
+    list.forEach((a, idx) => {
+      periodMap[activityIdentityKey(a)] = idx + 1;
+    });
+  }
+
+  return periodMap;
+}
+
+function displayTitleWithPeriod(a, periodMap) {
+  const base = activityLineTitle(a);
+  const period = periodMap ? periodMap[activityIdentityKey(a)] : null;
+  return period ? `${base}（第${period}期）` : base;
+}
+
 function buildActivitySummary(activities, options) {
   const calendarBaseUrl = (options && options.calendarBaseUrl) || process.env.CALENDAR_PUBLIC_URL || 'http://101.133.141.32';
 
@@ -235,42 +281,47 @@ function buildActivitySummary(activities, options) {
   const upcoming = activities.filter((a) => activityMatchesWebUpcoming(a, today));
   upcoming.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
 
-  const lines = ['**GNG 活动日历**', `🗓️ ${today}`, ''];
+  const periodMap = buildPeriodIndexMap(activities);
+  const lines = ['**GNG 活动日历**', `📅 ${today}`, '━━━━━━━━━━━━', ''];
 
   if (active.length > 0) {
     lines.push(`**🟢 正在进行 (${active.length})**`);
-    for (const a of active) {
+    active.forEach((a, idx) => {
       const type = a.types ? a.types[0] : '';
       const end = a.endDate || a.startDate || '?';
       const cat = (a.category && String(a.category).trim()) || '';
       const catPrefix = cat ? `【${cat}】` : '';
-      const title = activityLineTitle(a);
+      const title = displayTitleWithPeriod(a, periodMap);
       const rem = daysRemaining(today, end);
       const remStr = rem === null ? '?' : rem;
-      lines.push(`• ${catPrefix}${title} [${type}] → ${end} (剩${remStr}天)`);
-    }
+      lines.push(`${idx + 1}. ${catPrefix}${title} [${type}]`);
+      lines.push(`   ⏰ 截止 ${end}（剩${remStr}天）`);
+    });
   } else {
     lines.push('**🟢 正在进行 (0)**');
     lines.push('• 暂无正在进行的活动');
   }
 
   lines.push('');
+  lines.push('━━━━━━━━━━━━');
+  lines.push('');
 
   lines.push(`**🔜 即将开始 (${upcoming.length})**`);
   if (upcoming.length > 0) {
     const shown = upcoming.slice(0, 5);
-    for (const a of shown) {
+    shown.forEach((a, idx) => {
       const type = a.types ? a.types[0] : '';
-      const title = activityLineTitle(a);
-      lines.push(`• ${title} [${type}] ${a.startDate} 开始`);
-    }
+      const title = displayTitleWithPeriod(a, periodMap);
+      lines.push(`${idx + 1}. ${title} [${type}]`);
+      lines.push(`   🗓️ ${a.startDate} 开始`);
+    });
     if (upcoming.length > 5) lines.push(`...还有 ${upcoming.length - 5} 个`);
   } else {
     lines.push('• 暂无即将开始的活动');
   }
 
   const linkBase = String(calendarBaseUrl).replace(/\/$/, '');
-  lines.push('', `🔗 [查看完整日历](${linkBase})`);
+  lines.push('', '━━━━━━━━━━━━', `🔗 [查看完整日历](${linkBase})`);
 
   return lines.join('\n');
 }
