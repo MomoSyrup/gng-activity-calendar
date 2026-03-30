@@ -49,15 +49,23 @@
       </div>
 
       <div class="config-check-view" id="config-check-view" style="display:none">
-        <div class="config-placeholder">
-          <p>配置检查功能开发中…</p>
+        <div class="event-upload-panel">
+          <h3>Event 表手动同步</h3>
+          <p class="event-upload-desc">
+            已取消 Event 表自动同步。请在此手动上传最新 <code>Event.xlsx</code>，系统会立即刷新活动分类并同步到日历展示。
+          </p>
+          <form id="event-upload-form" class="event-upload-form">
+            <input id="event-file-input" type="file" accept=".xlsx" />
+            <button type="submit">上传并同步</button>
+          </form>
+          <p id="event-upload-status" class="upload-status"></p>
         </div>
       </div>
     </main>
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.5</button>
+      <button class="version-tag" id="version-btn">v0.3.6</button>
     </footer>
   </div>
 
@@ -68,6 +76,17 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.6</span>
+            <span class="changelog-date">2026-03-30</span>
+          </div>
+          <ul class="changelog-list">
+            <li>取消 Event 表自动监听与定时重载，改为网页端手动上传 Event.xlsx 触发同步</li>
+            <li>配置页新增 Event 上传入口与操作说明，上传成功后即时刷新活动分类与页面数据</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">

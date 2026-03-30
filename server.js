@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
+const multer = require('multer');
 const { parseActivities } = require('./parser');
 const excelReader = require('./excel-reader');
 const alphaSync = require('./alpha-knowledge-sync');
@@ -23,6 +24,10 @@ const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2;
 const POLL_INTERVAL_RAW = parseInt(process.env.POLL_INTERVAL, 10);
 const POLL_INTERVAL = Math.max(Number.isFinite(POLL_INTERVAL_RAW) ? POLL_INTERVAL_RAW : 30000, 30000);
 const ACTIVITY_SNAPSHOT_PATH = path.join(__dirname, 'data', 'activity-snapshot.json');
+const EVENT_EXCEL_PATH = process.env.EVENT_EXCEL_PATH || path.join(__dirname, 'data', 'Event.xlsx');
+const EVENT_UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'uploads');
+
+fs.mkdirSync(EVENT_UPLOAD_TMP_DIR, { recursive: true });
 
 // --------------- Google Sheets Auth (OAuth2) ---------------
 
@@ -59,7 +64,11 @@ let cachedDataJson = null;
 let cachedCalendarRows = null;
 let cachedConfigRows = null;
 let cachedActivitiesSnapshot = [];
-let excelWatchTimer = null;
+
+const upload = multer({
+  dest: EVENT_UPLOAD_TMP_DIR,
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 function loadActivitySnapshotFromDisk() {
   try {
@@ -474,7 +483,7 @@ function triggerAlphaSync() {
 function triggerUiRefreshAfterExcelReload(reason) {
   try {
     const typed = buildTypedActivities();
-    saveActivitySnapshot(typed, 'excel-watch');
+    saveActivitySnapshot(typed, reason || 'event-reload');
     io.emit('sheet:update', cachedData);
     triggerAlphaSync();
     console.log(
@@ -485,26 +494,8 @@ function triggerUiRefreshAfterExcelReload(reason) {
   }
 }
 
-function setupExcelRealtimeWatch() {
-  const excelPath = process.env.EVENT_EXCEL_PATH;
-  if (!excelPath) {
-    console.warn('[excel-reader] EVENT_EXCEL_PATH not configured, realtime watch disabled');
-    return;
-  }
-
-  const watchIntervalMs = parseInt(process.env.EXCEL_WATCH_INTERVAL_MS, 10) || 2000;
-  fs.watchFile(excelPath, { interval: watchIntervalMs }, (curr, prev) => {
-    if (curr.mtimeMs === 0) return;
-    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
-
-    if (excelWatchTimer) clearTimeout(excelWatchTimer);
-    excelWatchTimer = setTimeout(() => {
-      excelReader.load(excelPath);
-      triggerUiRefreshAfterExcelReload('local Event.xlsx change');
-    }, 400);
-  });
-
-  console.log(`[excel-reader] Realtime watch enabled: ${excelPath} (interval ${watchIntervalMs}ms)`);
+function isExcelFilename(name) {
+  return /\.xlsx$/i.test(String(name || ''));
 }
 
 app.get('/api/calendar', (_req, res) => {
@@ -514,6 +505,34 @@ app.get('/api/calendar', (_req, res) => {
   } catch (err) {
     console.error('Calendar parse error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/event-upload', upload.single('eventFile'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: '请先选择 Event.xlsx 文件' });
+
+  const originalName = req.file.originalname || '';
+  if (!isExcelFilename(originalName)) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: '仅支持 .xlsx 文件' });
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(EVENT_EXCEL_PATH), { recursive: true });
+    fs.renameSync(req.file.path, EVENT_EXCEL_PATH);
+    excelReader.load(EVENT_EXCEL_PATH);
+    triggerUiRefreshAfterExcelReload('manual Event.xlsx upload');
+    const activities = buildTypedActivities();
+    return res.json({
+      ok: true,
+      message: 'Event 表上传成功，活动数据已刷新',
+      file: originalName,
+      activities: activities.length,
+    });
+  } catch (err) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    console.error('[event-upload] Failed:', err.message);
+    return res.status(500).json({ error: '上传失败：' + err.message });
   }
 });
 
@@ -537,10 +556,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running at http://localhost:${PORT}`);
 
   loadActivitySnapshotFromDisk();
-  excelReader.load(process.env.EVENT_EXCEL_PATH);
-  setupExcelRealtimeWatch();
-  // Fallback periodic reload in case host file watch misses events.
-  setInterval(() => excelReader.load(), 10 * 60 * 1000);
+  excelReader.load(EVENT_EXCEL_PATH);
 
   try {
     const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
