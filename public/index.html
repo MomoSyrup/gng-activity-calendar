@@ -57,7 +57,7 @@
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.4</button>
+      <button class="version-tag" id="version-btn">v0.3.5</button>
     </footer>
   </div>
 
@@ -68,6 +68,17 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.5</span>
+            <span class="changelog-date">2026-03-30</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增活动数据快照兜底机制，服务重启遇到 Google 限流时仍可展示上一次有效活动内容</li>
+            <li>轮询间隔增加最小 30 秒保护，避免环境变量过小导致配额触发后页面内容空白</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">

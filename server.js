@@ -20,7 +20,9 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2;
-const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL, 10) || 30000;
+const POLL_INTERVAL_RAW = parseInt(process.env.POLL_INTERVAL, 10);
+const POLL_INTERVAL = Math.max(Number.isFinite(POLL_INTERVAL_RAW) ? POLL_INTERVAL_RAW : 30000, 30000);
+const ACTIVITY_SNAPSHOT_PATH = path.join(__dirname, 'data', 'activity-snapshot.json');
 
 // --------------- Google Sheets Auth (OAuth2) ---------------
 
@@ -56,7 +58,34 @@ let cachedData = null;
 let cachedDataJson = null;
 let cachedCalendarRows = null;
 let cachedConfigRows = null;
+let cachedActivitiesSnapshot = [];
 let excelWatchTimer = null;
+
+function loadActivitySnapshotFromDisk() {
+  try {
+    if (!fs.existsSync(ACTIVITY_SNAPSHOT_PATH)) return;
+    const raw = fs.readFileSync(ACTIVITY_SNAPSHOT_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      cachedActivitiesSnapshot = parsed;
+      console.log(`[cache] Loaded ${parsed.length} activities from snapshot`);
+    }
+  } catch (err) {
+    console.error('[cache] Failed to load activity snapshot:', err.message);
+  }
+}
+
+function saveActivitySnapshot(activities, reason) {
+  if (!Array.isArray(activities) || activities.length === 0) return;
+  try {
+    fs.mkdirSync(path.dirname(ACTIVITY_SNAPSHOT_PATH), { recursive: true });
+    fs.writeFileSync(ACTIVITY_SNAPSHOT_PATH, JSON.stringify(activities), 'utf8');
+    cachedActivitiesSnapshot = activities;
+    if (reason) console.log(`[cache] Activity snapshot updated (${activities.length}) by ${reason}`);
+  } catch (err) {
+    console.error('[cache] Failed to save activity snapshot:', err.message);
+  }
+}
 
 async function getSheetNames(spreadsheetId) {
   const meta = await sheets.spreadsheets.get({
@@ -115,6 +144,8 @@ async function poll() {
     if (json !== cachedDataJson) {
       cachedData = data;
       cachedDataJson = json;
+      const typedActivities = buildTypedActivities();
+      saveActivitySnapshot(typedActivities, 'poll');
       const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
       console.log(
         `[${new Date().toLocaleTimeString()}] Data changed – ` +
@@ -406,10 +437,12 @@ function supplementWeekendSupply(activities) {
 }
 
 function buildTypedActivities() {
-  if (!cachedData) return [];
+  if (!cachedData) return cachedActivitiesSnapshot;
   let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
   activities = supplementWeekendSupply(activities);
-  return attachEventTypes(activities);
+  activities = attachEventTypes(activities);
+  if (activities.length > 0) cachedActivitiesSnapshot = activities;
+  return activities;
 }
 
 /** 与网页一致：先拉取最新 Sheets，再读同一套 /api/calendar JSON */
@@ -439,8 +472,9 @@ function triggerAlphaSync() {
 }
 
 function triggerUiRefreshAfterExcelReload(reason) {
-  if (!cachedData) return;
   try {
+    const typed = buildTypedActivities();
+    saveActivitySnapshot(typed, 'excel-watch');
     io.emit('sheet:update', cachedData);
     triggerAlphaSync();
     console.log(
@@ -474,9 +508,9 @@ function setupExcelRealtimeWatch() {
 }
 
 app.get('/api/calendar', (_req, res) => {
-  if (!cachedData) return res.json({ activities: [] });
   try {
-    res.json({ activities: buildTypedActivities() });
+    const activities = buildTypedActivities();
+    res.json({ activities });
   } catch (err) {
     console.error('Calendar parse error:', err.message);
     res.status(500).json({ error: err.message });
@@ -502,6 +536,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running at http://localhost:${PORT}`);
 
+  loadActivitySnapshotFromDisk();
   excelReader.load(process.env.EVENT_EXCEL_PATH);
   setupExcelRealtimeWatch();
   // Fallback periodic reload in case host file watch misses events.
@@ -513,6 +548,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     cachedDataJson = JSON.stringify(data);
     cachedCalendarRows = sheet2.calendarRows;
     cachedConfigRows = sheet2.configRows;
+    saveActivitySnapshot(buildTypedActivities(), 'initial-load');
     const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
     console.log(`Initial data loaded – ${data.sheetNames.length} sheet(s), ${totalRows} row(s)`);
     if (sheet2.calendarRows) console.log(`Calendar sheet loaded – ${sheet2.calendarRows.length} row(s)`);
