@@ -27,6 +27,7 @@
           <span class="dot"></span>
           <span class="label">连接中…</span>
         </div>
+        <button class="version-tag header-version" id="version-btn">v0.3.22</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -65,7 +66,6 @@
 
     <footer>
       <span id="update-time"></span>
-      <button class="version-tag" id="version-btn">v0.3.15</button>
     </footer>
   </div>
 
@@ -76,6 +76,93 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.22</span>
+            <span class="changelog-date">2026-04-03</span>
+          </div>
+          <ul class="changelog-list">
+            <li>推送图片全面优化：活动行改用 CSS Grid 确保标签/日期/徽章跨行对齐</li>
+            <li>活动分类直接读取 API 类型字段（任务/兑换/网页/抽奖），颜色与左侧彩条联动</li>
+            <li>今日栏改为四格横排 HUD 信息条，显示进行中数量、即将开始数量、4:00 重置提示</li>
+            <li>今日已关活动（凌晨4点过期）显示"今日已关"灰色徽章，避免误导</li>
+            <li>背景人物去底改用 BFS 洪水填充，精确去除图片黑底不损伤角色本体</li>
+            <li>背景图对齐改为顶部对齐，地图纹理全程覆盖</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.21</span>
+            <span class="changelog-date">2026-03-24</span>
+          </div>
+          <ul class="changelog-list">
+            <li>SeaTalk 推送图片改用 Puppeteer 无头浏览器渲染，视觉质量提升至网页级别</li>
+            <li>全新 HTML/CSS 设计：毛玻璃面板、渐变、阴影、CJK 字体清晰渲染</li>
+            <li>倒计时徽章样式保留，活动卡片左侧彩色竖条区分状态</li>
+            <li>移除 Python/PIL 渲染依赖，推送链路改为纯 Node.js</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.20</span>
+            <span class="changelog-date">2026-03-24</span>
+          </div>
+          <ul class="changelog-list">
+            <li>SeaTalk 推送日历图片全面美化：标题两侧添加装饰横线与菱形点缀</li>
+            <li>活动卡片左侧加彩色竖条（正在进行绿色，即将开始蓝色）</li>
+            <li>倒计时改为彩色圆角徽章（紧急红、临近黄、充裕绿/蓝）</li>
+            <li>分区标题前加彩色方块前缀，视觉层次更清晰</li>
+            <li>日历格今日高亮加白色外框，事件指示圆点放大加强</li>
+            <li>底部链接栏加 ↗ 符号，提示可跳转网页</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.19</span>
+            <span class="changelog-date">2026-04-02</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复每日 SeaTalk 图片推送死锁问题（spawnSync 阻塞事件循环导致 Python 脚本无法获取数据）</li>
+            <li>改用异步 execFile 执行图片渲染子进程，推送不再超时</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.18</span>
+            <span class="changelog-date">2026-03-31</span>
+          </div>
+          <ul class="changelog-list">
+            <li>版本号按钮调整到右上状态区（连接状态旁），信息层级更清晰</li>
+            <li>保持版本号点击后弹出更新日志的交互不变</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.17</span>
+            <span class="changelog-date">2026-03-31</span>
+          </div>
+          <ul class="changelog-list">
+            <li>网页版本号按钮移至顶部标题栏，和状态栏同一行展示</li>
+            <li>保留点击版本号查看更新日志的交互能力</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.16</span>
+            <span class="changelog-date">2026-03-31</span>
+          </div>
+          <ul class="changelog-list">
+            <li>SeaTalk 定时自动推送切换为图片版，按工作日规则在 10:30 发送日历海报</li>
+            <li>关闭自动文字版日推，避免与图片推送重复触达</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">
