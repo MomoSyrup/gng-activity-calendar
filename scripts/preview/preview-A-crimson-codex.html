@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<title>方案A - Crimson Codex</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Cinzel:wght@400;700;900&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1200px;
+    min-height: 760px;
+    background: #0a0608;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(100,10,10,0.55) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(80,8,8,0.35) 0%, transparent 60%),
+      linear-gradient(160deg, #0f080a 0%, #080510 50%, #0a0608 100%);
+    color: #e8d5a3;
+    font-family: 'Noto Sans SC', sans-serif;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Ambient dust particles effect via pseudo-elements */
+  body::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 15% 25%, rgba(201,168,76,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 70% 15%, rgba(201,168,76,0.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 85% 60%, rgba(201,168,76,0.25) 0%, transparent 100%),
+      radial-gradient(1px 1px at 30% 80%, rgba(201,168,76,0.15) 0%, transparent 100%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* Vignette */
+  body::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .root {
+    position: relative; z-index: 1;
+    padding: 28px 36px 28px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  /* ── Title ── */
+  .title-area {
+    display: flex; align-items: center; justify-content: center; gap: 0;
+    position: relative;
+  }
+  .title-ornament {
+    flex: 1; height: 2px;
+    background: linear-gradient(to right, transparent, #7a1a1a 30%, #c9a84c 60%, #7a1a1a 80%, transparent);
+    position: relative;
+  }
+  .title-ornament.right {
+    background: linear-gradient(to left, transparent, #7a1a1a 30%, #c9a84c 60%, #7a1a1a 80%, transparent);
+  }
+  .title-ornament::before, .title-ornament::after {
+    content: '✦';
+    position: absolute; top: 50%; transform: translateY(-50%);
+    color: #c9a84c; font-size: 10px; line-height: 1;
+  }
+  .title-ornament::before { right: 0; }
+  .title-ornament.right::before { left: 0; right: auto; }
+  h1 {
+    font-family: 'Cinzel', 'Noto Sans SC', serif;
+    font-size: 38px; font-weight: 900;
+    letter-spacing: 6px;
+    padding: 0 28px;
+    color: transparent;
+    background: linear-gradient(180deg, #f5e6b0 0%, #c9a84c 40%, #8b6914 100%);
+    -webkit-background-clip: text; background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 12px rgba(201,168,76,0.5));
+    flex-shrink: 0;
+  }
+
+  /* ── Today badge ── */
+  .today-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, rgba(90,15,15,0.8), rgba(50,8,8,0.9));
+    border: 1px solid rgba(201,168,76,0.5);
+    border-radius: 4px;
+    padding: 6px 18px;
+    font-size: 14px; letter-spacing: 1px;
+    color: #e8d5a3;
+    position: relative;
+  }
+  .today-badge::before, .today-badge::after {
+    content: '◆';
+    color: #c9a84c; font-size: 8px;
+  }
+
+  /* ── Layout ── */
+  .main-layout { display: flex; gap: 20px; }
+
+  /* ── Calendar ── */
+  .cal-panel {
+    width: 244px; flex-shrink: 0;
+    background: linear-gradient(160deg, rgba(20,8,8,0.92), rgba(12,5,5,0.96));
+    border: 1px solid rgba(201,168,76,0.35);
+    border-radius: 6px;
+    padding: 18px 14px;
+    position: relative;
+  }
+  /* Corner ornaments */
+  .cal-panel::before, .cal-panel::after {
+    content: '';
+    position: absolute; width: 12px; height: 12px;
+    border-color: #c9a84c; border-style: solid;
+  }
+  .cal-panel::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .cal-panel::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+  .cal-month {
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 17px; font-weight: 700;
+    color: #c9a84c; margin-bottom: 14px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(201,168,76,0.4);
+  }
+  .cal-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(201,168,76,0.4), transparent);
+    margin-bottom: 10px;
+  }
+  .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 6px; }
+  .cal-wd { text-align: center; font-size: 11px; color: rgba(201,168,76,0.6); padding: 3px 0; }
+  .cal-wd:nth-child(6), .cal-wd:nth-child(7) { color: rgba(180,60,60,0.8); }
+  .cal-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 2px; }
+  .cal-cell {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 3px; font-size: 12px;
+    color: rgba(232,213,163,0.65);
+    background: rgba(30,10,10,0.5);
+  }
+  .cal-cell.empty { background: transparent; }
+  .cal-cell.today {
+    background: linear-gradient(135deg, #8b0000, #5a0000);
+    border: 1px solid #c9a84c;
+    color: #f5e6b0; font-weight: 700;
+    box-shadow: 0 0 10px rgba(139,0,0,0.6), inset 0 0 6px rgba(201,168,76,0.2);
+  }
+  .cal-cell.has-event {
+    background: rgba(80,20,20,0.6);
+    border: 1px solid rgba(139,0,0,0.4);
+  }
+  .cal-cell.has-event::after {
+    content: ''; display: block; width: 3px; height: 3px;
+    background: #c9a84c; border-radius: 50%;
+    position: absolute; bottom: 3px;
+  }
+  .cal-cell { position: relative; }
+
+  /* ── Panels ── */
+  .panels { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  .panel {
+    background: linear-gradient(160deg, rgba(16,6,6,0.90), rgba(10,4,4,0.95));
+    border: 1px solid rgba(139,0,0,0.5);
+    border-radius: 6px;
+    padding: 18px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(to right, transparent, rgba(201,168,76,0.6), transparent);
+  }
+  /* Glow accent on left edge */
+  .panel.active-panel { border-left: 3px solid #8b0000; box-shadow: inset 3px 0 20px rgba(139,0,0,0.15), 0 0 0 1px rgba(139,0,0,0.3); }
+  .panel.upcoming-panel { border-left: 3px solid #3a2a5a; box-shadow: inset 3px 0 20px rgba(80,50,120,0.15); }
+
+  /* Section headers */
+  .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .section-icon { font-size: 18px; filter: drop-shadow(0 0 4px currentColor); }
+  .section-title { font-family: 'Cinzel', serif; font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+  .section-title.active { color: #c9a84c; text-shadow: 0 0 8px rgba(201,168,76,0.5); }
+  .section-title.upcoming { color: #9b7fca; text-shadow: 0 0 8px rgba(155,127,202,0.5); }
+  .section-count { font-size: 13px; color: rgba(232,213,163,0.5); margin-left: auto; font-style: italic; letter-spacing: 1px; }
+
+  /* Activity rows */
+  .activity-row {
+    display: flex; align-items: center;
+    padding: 10px 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(201,168,76,0.12);
+    background: linear-gradient(to right, rgba(40,12,12,0.8), rgba(20,8,8,0.6));
+    margin-bottom: 8px;
+    position: relative;
+    gap: 0;
+    transition: border-color 0.2s;
+  }
+  .activity-row:last-child { margin-bottom: 0; }
+  .activity-row::before {
+    content: '';
+    position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 3px; border-radius: 2px;
+  }
+  .activity-row.active-row::before { background: linear-gradient(to bottom, #c9a84c, #8b6914); }
+  .activity-row.upcoming-row::before { background: linear-gradient(to bottom, #9b7fca, #5a3a8a); }
+
+  /* Small sword icon */
+  .row-icon { font-size: 14px; margin-left: 14px; margin-right: 10px; flex-shrink: 0; opacity: 0.7; }
+  .act-name {
+    font-size: 15px; font-weight: 500;
+    color: #e8d5a3; flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-right: 12px;
+  }
+  .act-date {
+    font-size: 12px; color: rgba(180,155,100,0.6);
+    white-space: nowrap; flex-shrink: 0; margin-right: 12px;
+    font-style: italic;
+  }
+  .badge {
+    font-size: 12px; font-weight: 700;
+    padding: 3px 12px; border-radius: 2px;
+    white-space: nowrap; flex-shrink: 0;
+    letter-spacing: 0.5px;
+    border: 1px solid;
+  }
+  .badge.urgent { background: rgba(139,0,0,0.7); border-color: #c9a84c; color: #f5d070; }
+  .badge.warn   { background: rgba(100,60,0,0.7); border-color: #c9a84c; color: #f5d070; }
+  .badge.ok     { background: rgba(0,60,30,0.7);  border-color: rgba(80,180,100,0.6); color: #90e8a0; }
+  .badge.blue   { background: rgba(40,20,80,0.7);  border-color: rgba(155,127,202,0.6); color: #c0a0f0; }
+
+  /* ── Footer ── */
+  .footer {
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(to right, rgba(20,8,8,0.9), rgba(12,5,5,0.9));
+    border: 1px solid rgba(201,168,76,0.25);
+    border-radius: 4px;
+    padding: 10px 20px;
+    font-size: 13px; color: rgba(201,168,76,0.7);
+    letter-spacing: 0.5px;
+  }
+  .footer-link { color: #c9a84c; }
+</style>
+</head>
+<body>
+<div class="root">
+
+  <div class="title-area">
+    <div class="title-ornament"></div>
+    <h1>GNG活动日历</h1>
+    <div class="title-ornament right"></div>
+  </div>
+
+  <div>
+    <div class="today-badge">今日 &nbsp;2026-04-03</div>
+  </div>
+
+  <div class="main-layout">
+    <div class="cal-panel">
+      <div class="cal-month">2026年4月</div>
+      <div class="cal-divider"></div>
+      <div class="cal-weekdays">
+        <div class="cal-wd">一</div><div class="cal-wd">二</div><div class="cal-wd">三</div>
+        <div class="cal-wd">四</div><div class="cal-wd">五</div>
+        <div class="cal-wd">六</div><div class="cal-wd">日</div>
+      </div>
+      <div class="cal-row">
+        <div class="cal-cell empty"></div><div class="cal-cell">1</div><div class="cal-cell">2</div>
+        <div class="cal-cell today">3</div><div class="cal-cell has-event">4</div><div class="cal-cell">5</div><div class="cal-cell">6</div>
+      </div>
+      <div class="cal-row">
+        <div class="cal-cell has-event">7</div><div class="cal-cell">8</div><div class="cal-cell">9</div>
+        <div class="cal-cell has-event">10</div><div class="cal-cell">11</div><div class="cal-cell">12</div><div class="cal-cell">13</div>
+      </div>
+      <div class="cal-row">
+        <div class="cal-cell has-event">14</div><div class="cal-cell">15</div><div class="cal-cell">16</div>
+        <div class="cal-cell">17</div><div class="cal-cell">18</div><div class="cal-cell">19</div><div class="cal-cell">20</div>
+      </div>
+      <div class="cal-row">
+        <div class="cal-cell">21</div><div class="cal-cell">22</div><div class="cal-cell">23</div>
+        <div class="cal-cell">24</div><div class="cal-cell">25</div><div class="cal-cell">26</div><div class="cal-cell">27</div>
+      </div>
+      <div class="cal-row">
+        <div class="cal-cell">28</div><div class="cal-cell">29</div><div class="cal-cell">30</div>
+      </div>
+    </div>
+
+    <div class="panels">
+      <div class="panel active-panel">
+        <div class="section-header">
+          <span class="section-icon" style="color:#c9a84c">⚔</span>
+          <span class="section-title active">正在进行</span>
+          <span class="section-count">— 6 项活动</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">99兑换商店（第3期）</span>
+          <span class="act-date">2026-03-20 ~ 2026-04-03</span>
+          <span class="badge urgent">还有0天结束</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">周末补给（第30期）</span>
+          <span class="act-date">2026-04-03 ~ 2026-04-07</span>
+          <span class="badge warn">还有4天结束</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">99兑换商店（第4期）</span>
+          <span class="act-date">2026-04-03 ~ 2026-04-10</span>
+          <span class="badge warn">还有7天结束</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">【1.0全赛季】石中剑（1/2）</span>
+          <span class="act-date">2025-12-08 ~ 2026-04-14</span>
+          <span class="badge ok">还有11天结束</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">赛季组队冲刺网页活动</span>
+          <span class="act-date">2026-03-26 ~ 2026-04-14</span>
+          <span class="badge ok">还有11天结束</span>
+        </div>
+        <div class="activity-row active-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">雪人活动三期</span>
+          <span class="act-date">2026-03-28 ~ 2026-04-14</span>
+          <span class="badge ok">还有11天结束</span>
+        </div>
+      </div>
+
+      <div class="panel upcoming-panel">
+        <div class="section-header">
+          <span class="section-icon" style="color:#9b7fca">🔮</span>
+          <span class="section-title upcoming">即将开始</span>
+          <span class="section-count">— 2 项活动</span>
+        </div>
+        <div class="activity-row upcoming-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">99兑换商店（第5期）</span>
+          <span class="act-date">2026-04-10 ~ 2026-04-14</span>
+          <span class="badge blue">还有7天开始</span>
+        </div>
+        <div class="activity-row upcoming-row">
+          <span class="row-icon">◆</span>
+          <span class="act-name">周末补给（第31期）</span>
+          <span class="act-date">2026-04-10 ~ 2026-04-14</span>
+          <span class="badge blue">还有7天开始</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span style="color:rgba(201,168,76,0.4)">✦</span>
+    <span>网页日历：</span>
+    <span class="footer-link">http://101.133.141.32</span>
+    <span style="color:rgba(201,168,76,0.4)">↗</span>
+  </div>
+
+</div>
+</body>
+</html>
