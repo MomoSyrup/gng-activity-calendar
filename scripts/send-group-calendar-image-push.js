@@ -47,21 +47,11 @@ async function main() {
     throw new Error(`group image send failed: ${JSON.stringify(imageResp || {})}`);
   }
 
-  const linkResp = await seatalkBot.sendGroupMessage(
-    groupId,
-    `🔗 [查看网页日历](${webUrl})`,
-    true
-  );
-  if (!linkResp || linkResp.code !== 0) {
-    throw new Error(`group link send failed: ${JSON.stringify(linkResp || {})}`);
-  }
-
   console.log(
     JSON.stringify(
       {
         groupId,
         imageMessageId: imageResp.message_id,
-        linkMessageId: linkResp.message_id,
         webUrl,
       },
       null,
