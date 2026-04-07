@@ -7,7 +7,9 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const multer = require('multer');
 const { parseActivities } = require('./parser');
 const excelReader = require('./excel-reader');
@@ -253,6 +255,32 @@ app.post('/api/seatalk-push', (req, res) => {
     .catch((err) => {
       res.status(500).json({ error: err.message });
     });
+});
+
+app.post('/api/seatalk-image-push', express.json(), async (req, res) => {
+  if (req.headers['x-internal-key'] !== (process.env.SEATALK_SIGNING_SECRET || '')) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const targetGroupId = (req.body && req.body.group_id) || process.env.SEATALK_GROUP_ID;
+  if (!targetGroupId) {
+    return res.status(400).json({ error: 'no group_id' });
+  }
+  try {
+    await poll();
+    const scriptPath = path.join(__dirname, 'scripts', 'send-group-calendar-image-push.js');
+    const { stdout, stderr } = await execFileAsync(process.execPath, [scriptPath, targetGroupId], {
+      cwd: __dirname,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024 * 16,
+      env: process.env,
+      timeout: 120000,
+    });
+    if (stderr && stderr.trim()) console.warn('[image-push] stderr:', stderr.trim());
+    res.json({ ok: true, groupId: targetGroupId, output: (stdout || '').trim() });
+  } catch (err) {
+    console.error('[image-push] Error:', err.message);
+    res.status(500).json({ error: err.stderr || err.message });
+  }
 });
 
 // --------------- GitHub Webhook Auto-Deploy ---------------
@@ -557,6 +585,27 @@ function triggerAlphaSync() {
   }
 }
 
+async function pushDailyCalendarImageToGroup() {
+  const groupId = process.env.SEATALK_GROUP_ID;
+  if (!groupId) {
+    throw new Error('SEATALK_GROUP_ID not configured');
+  }
+  const scriptPath = path.join(__dirname, 'scripts', 'send-group-calendar-image-push.js');
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [scriptPath, groupId], {
+      cwd: __dirname,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024 * 16,
+      env: process.env,
+    });
+    console.log('[SeaTalk] Daily image push done:', (stdout || '').trim());
+  } catch (err) {
+    throw new Error(
+      `daily image push failed (${err.code}): ${err.stderr || err.stdout || err.message}`
+    );
+  }
+}
+
 function triggerUiRefreshAfterExcelReload(reason) {
   try {
     const typed = buildTypedActivities();
@@ -657,7 +706,12 @@ server.listen(PORT, '0.0.0.0', async () => {
 
   // SeaTalk workday group push at 10:30 Beijing time (UTC+8)
   if (process.env.SEATALK_APP_ID) {
-    seatalkBot.scheduleDailyPush(10, 30, activitiesForSeaTalkPush);
+    seatalkBot.scheduleDailyPush(
+      10,
+      30,
+      activitiesForSeaTalkPush,
+      async () => pushDailyCalendarImageToGroup()
+    );
   }
 
   setInterval(poll, POLL_INTERVAL);

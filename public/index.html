@@ -27,7 +27,7 @@
           <span class="dot"></span>
           <span class="label">连接中…</span>
         </div>
-        <button class="version-tag header-version" id="version-btn">v0.3.22</button>
+        <button class="version-tag header-version" id="version-btn">v0.3.23</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -76,6 +76,19 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.23</span>
+            <span class="changelog-date">2026-04-07</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复节假日推送：添加 PUSH_HOLIDAYS / PUSH_MAKEUP_WORKDAYS 配置，避免法定假日误发推送</li>
+            <li>推送渲染器切换至 HTML/Puppeteer，替代旧 Python 渲染器</li>
+            <li>新增 /api/seatalk-image-push 接口，支持指定群组触发图片推送</li>
+            <li>推送同时发送日历图片和网页链接</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">

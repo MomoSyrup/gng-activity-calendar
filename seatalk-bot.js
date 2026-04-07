@@ -387,7 +387,7 @@ function isWorkdayPushDate(beijingDate, holidaySet, makeupWorkdaySet) {
   return isWeekdayInBeijing(beijingDate);
 }
 
-function scheduleDailyPush(hour, minute, activityGetter) {
+function scheduleDailyPush(hour, minute, activityGetter, pushHandler) {
   getActivitiesFn = activityGetter;
   const holidaySet = parseDateSet(process.env.PUSH_HOLIDAYS);
   const makeupWorkdaySet = parseDateSet(process.env.PUSH_MAKEUP_WORKDAYS);
@@ -413,8 +413,12 @@ function scheduleDailyPush(hour, minute, activityGetter) {
           const r = getActivitiesFn();
           activities = r && typeof r.then === 'function' ? await r : r;
         }
-        const summary = buildActivitySummary(activities);
-        await pushToGroup(summary, true);
+        if (typeof pushHandler === 'function') {
+          await pushHandler(activities);
+        } else {
+          const summary = buildActivitySummary(activities);
+          await pushToGroup(summary, true);
+        }
       } catch (err) {
         console.error('[SeaTalk] Daily push error:', err.message);
       }

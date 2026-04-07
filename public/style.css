@@ -150,6 +150,12 @@ header {
 .header-left { display: flex; align-items: center; gap: 1rem; }
 .header-right { display: flex; align-items: center; gap: 0.75rem; }
 
+.header-version {
+  margin-left: 0;
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
 h1 {
   font-size: 1.35rem;
   font-weight: 800;
