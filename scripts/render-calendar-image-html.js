@@ -551,8 +551,25 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
 
 // ─── main ─────────────────────────────────────────────────────
 
+function findChromium() {
+  const { execSync } = require('child_process');
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/snap/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try { require('fs').accessSync(p); return p; } catch {}
+  }
+  try { return execSync('which chromium || which chromium-browser || which google-chrome', { encoding: 'utf8' }).trim(); } catch {}
+  return undefined;
+}
+
 async function main() {
-  const puppeteer = require('puppeteer');
+  let puppeteer;
+  try { puppeteer = require('puppeteer'); } catch { puppeteer = require('puppeteer-core'); }
 
   const data  = await fetchJson(apiUrl);
   const { today, hour: bjHour } = bjNow();
@@ -564,10 +581,13 @@ async function main() {
 
   const html = buildHtml(data, today, bgBase64, charBase64, bjHour);
 
-  const browser = await puppeteer.launch({
+  const launchOpts = {
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
+  };
+  const chromePath = findChromium();
+  if (chromePath) launchOpts.executablePath = chromePath;
+  const browser = await puppeteer.launch(launchOpts);
 
   try {
     const page = await browser.newPage();
