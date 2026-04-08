@@ -447,19 +447,14 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
   /* ── Character ───────────────────────────── */
   .bg-character {
     position: absolute;
-    bottom: 28px; left: -50px;
-    width: 220px;
+    bottom: 48px; left: 75px;
+    width: 150px;
     pointer-events: none; z-index: 0;
-    /* dark-bg removal is handled via canvas pixel processing in main() */
     filter: brightness(1.30) contrast(1.05) sepia(0.18) saturate(0.92);
     -webkit-mask-image:
-      linear-gradient(to bottom, black 55%, transparent 92%),
-      linear-gradient(to right, transparent 8%, black 35%, black 72%, transparent 100%);
-    -webkit-mask-composite: destination-in;
+      linear-gradient(to bottom, transparent 0%, black 18%, black 78%, transparent 100%);
     mask-image:
-      linear-gradient(to bottom, black 55%, transparent 92%),
-      linear-gradient(to right, transparent 8%, black 35%, black 72%, transparent 100%);
-    mask-composite: intersect;
+      linear-gradient(to bottom, transparent 0%, black 18%, black 78%, transparent 100%);
   }
 
   /* ── Footer ──────────────────────────────── */
