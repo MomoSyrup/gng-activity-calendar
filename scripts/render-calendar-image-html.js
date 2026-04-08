@@ -104,6 +104,19 @@ function getTypeStyle(types) {
   return DEFAULT_STYLE;
 }
 
+function getAllTypeTags(types) {
+  if (!types || !types.length) return [];
+  const seen = new Set();
+  const tags = [];
+  for (const key of TYPE_PRIORITY) {
+    if (types.includes(key) && TYPE_MAP[key] && TYPE_MAP[key].tag && !seen.has(TYPE_MAP[key].tag)) {
+      seen.add(TYPE_MAP[key].tag);
+      tags.push({ tag: TYPE_MAP[key].tag, color: TYPE_MAP[key].border });
+    }
+  }
+  return tags;
+}
+
 // ─── badge helpers ────────────────────────────────────────────
 
 // Activities reset at 04:00 BJ — an endDate=today activity has already
@@ -175,18 +188,18 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
     const s    = a.startDate || '';
     const e    = a.endDate || a.startDate || '';
     const ts   = getTypeStyle(a.types);
+    const tags = getAllTypeTags(a.types);
     const badge = isActive
       ? activeBadge(e ? dayDiff(e, today) : null, bjHour)
       : upcomingBadge(s ? dayDiff(s, today) : null);
-    // Always render type-tag so the grid column is occupied; hide if no tag
-    const tagStyle = ts.tag
-      ? `color:${ts.border};border-color:${ts.border}50`
-      : 'opacity:0;border-color:transparent;pointer-events:none';
+    const tagsHtml = tags.length > 0
+      ? tags.map(t => `<span class="type-tag" style="color:${t.color};border-color:${t.color}50">${t.tag}</span>`).join('')
+      : '<span class="type-tag" style="opacity:0;border-color:transparent">&nbsp;</span>';
     return `
     <div class="activity-row" style="background:${ts.rowBg};border-left:3px solid ${ts.border}50">
       <span class="row-mark" style="color:${ts.mark}">${isActive ? '❖' : '◈'}</span>
       <span class="act-name">${displayTitle(a, pm)}</span>
-      <span class="type-tag" style="${tagStyle}">${ts.tag || ''}</span>
+      <div class="type-tags">${tagsHtml}</div>
       <span class="act-date">${s} ~ ${e}</span>
       ${badge}
     </div>`;
@@ -387,8 +400,8 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
   /* Activity rows — grid layout keeps all columns aligned across rows */
   .activity-row {
     display: grid;
-    /* mark | name | type-tag | date | badge */
-    grid-template-columns: 18px 1fr 46px 163px 76px;
+    /* mark | name | type-tags | date | badge */
+    grid-template-columns: 18px 1fr auto 163px 76px;
     align-items: center;
     column-gap: 7px;
     padding: 9px 14px 9px 10px;
@@ -403,10 +416,13 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
     font-size: 15px; font-weight: 500; color: #d4b896;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  /* Type tag pill — always rendered, hidden when no tag */
+  .type-tags {
+    display: flex; gap: 4px; align-items: center;
+    min-width: 46px; justify-content: flex-end;
+  }
   .type-tag {
     font-size: 11px; font-weight: 700; letter-spacing: 1px;
-    padding: 2px 0; border-radius: 2px; border: 1px solid;
+    padding: 2px 5px; border-radius: 2px; border: 1px solid;
     white-space: nowrap; background: rgba(0,0,0,0.30);
     text-align: center;
   }
@@ -431,18 +447,18 @@ function buildHtml(data, today, bgMapBase64, bgCharBase64, bjHour) {
   /* ── Character ───────────────────────────── */
   .bg-character {
     position: absolute;
-    bottom: 72px; left: 18px;
-    width: 250px;
+    bottom: 28px; left: -50px;
+    width: 220px;
     pointer-events: none; z-index: 0;
     /* dark-bg removal is handled via canvas pixel processing in main() */
     filter: brightness(1.30) contrast(1.05) sepia(0.18) saturate(0.92);
     -webkit-mask-image:
-      linear-gradient(to bottom, black 62%, transparent 94%),
-      linear-gradient(to right, black 72%, transparent 100%);
+      linear-gradient(to bottom, black 55%, transparent 92%),
+      linear-gradient(to right, transparent 8%, black 35%, black 72%, transparent 100%);
     -webkit-mask-composite: destination-in;
     mask-image:
-      linear-gradient(to bottom, black 62%, transparent 94%),
-      linear-gradient(to right, black 72%, transparent 100%);
+      linear-gradient(to bottom, black 55%, transparent 92%),
+      linear-gradient(to right, transparent 8%, black 35%, black 72%, transparent 100%);
     mask-composite: intersect;
   }
 
