@@ -40,7 +40,7 @@ function verifySignature(rawBody, signature) {
 
 // ---------- Access Token (with cache) ----------
 
-function apiCall(method, urlPath, body) {
+function apiCallOnce(method, urlPath, body) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const opts = {
@@ -72,7 +72,21 @@ function apiCall(method, urlPath, body) {
   });
 }
 
-function apiCallAuth(method, urlPath, body) {
+async function apiCall(method, urlPath, body, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCallOnce(method, urlPath, body);
+    } catch (err) {
+      const retriable = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|timeout/i.test(err.message);
+      if (!retriable || attempt >= maxRetries) throw err;
+      const delay = 2000 * attempt;
+      console.warn(`[SeaTalk] apiCall attempt ${attempt} failed (${err.message}), retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+function apiCallAuthOnce(method, urlPath, body) {
   return getAccessToken().then((token) => {
     return new Promise((resolve, reject) => {
       const data = body ? JSON.stringify(body) : null;
@@ -107,6 +121,20 @@ function apiCallAuth(method, urlPath, body) {
       req.end();
     });
   });
+}
+
+async function apiCallAuth(method, urlPath, body, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCallAuthOnce(method, urlPath, body);
+    } catch (err) {
+      const retriable = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|timeout/i.test(err.message);
+      if (!retriable || attempt >= maxRetries) throw err;
+      const delay = 3000 * attempt;
+      console.warn(`[SeaTalk] apiCallAuth attempt ${attempt} failed (${err.message}), retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 }
 
 async function getAccessToken() {

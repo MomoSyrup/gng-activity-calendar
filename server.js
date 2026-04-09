@@ -591,18 +591,30 @@ async function pushDailyCalendarImageToGroup() {
     throw new Error('SEATALK_GROUP_ID not configured');
   }
   const scriptPath = path.join(__dirname, 'scripts', 'send-group-calendar-image-push.js');
-  try {
-    const { stdout } = await execFileAsync(process.execPath, [scriptPath, groupId], {
-      cwd: __dirname,
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024 * 16,
-      env: process.env,
-    });
-    console.log('[SeaTalk] Daily image push done:', (stdout || '').trim());
-  } catch (err) {
-    throw new Error(
-      `daily image push failed (${err.code}): ${err.stderr || err.stdout || err.message}`
-    );
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { stdout } = await execFileAsync(process.execPath, [scriptPath, groupId], {
+        cwd: __dirname,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 16,
+        env: process.env,
+        timeout: 120000,
+      });
+      console.log('[SeaTalk] Daily image push done:', (stdout || '').trim());
+      return;
+    } catch (err) {
+      const msg = err.stderr || err.stdout || err.message || '';
+      const retriable = /ETIMEDOUT|ECONNRESET|socket hang up|timeout/i.test(msg);
+      if (!retriable || attempt >= maxAttempts) {
+        throw new Error(
+          `daily image push failed (${err.code}): ${msg}`
+        );
+      }
+      const delay = 5000 * attempt;
+      console.warn(`[SeaTalk] Image push attempt ${attempt} failed (${msg.slice(0, 120)}), retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
   }
 }
 
