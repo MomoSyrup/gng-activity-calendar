@@ -3,6 +3,23 @@
 const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
+const { URL } = require('url');
+
+let _proxyAgent = null;
+function getProxyAgent() {
+  if (_proxyAgent !== undefined && _proxyAgent !== null) return _proxyAgent;
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+  if (!proxyUrl) { _proxyAgent = null; return null; }
+  try {
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    _proxyAgent = new HttpsProxyAgent(proxyUrl);
+    console.log('[SeaTalk] Using HTTPS proxy:', proxyUrl);
+    return _proxyAgent;
+  } catch {
+    _proxyAgent = null;
+    return null;
+  }
+}
 
 const APP_ID = process.env.SEATALK_APP_ID;
 const APP_SECRET = process.env.SEATALK_APP_SECRET;
@@ -31,8 +48,11 @@ function apiCall(method, urlPath, body) {
       path: urlPath,
       method,
       headers: { 'Content-Type': 'application/json' },
+      timeout: 30000,
     };
     if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
+    const agent = getProxyAgent();
+    if (agent) opts.agent = agent;
 
     const req = https.request(opts, (res) => {
       let chunks = [];
@@ -45,6 +65,7 @@ function apiCall(method, urlPath, body) {
         }
       });
     });
+    req.on('timeout', () => { req.destroy(); reject(new Error('SeaTalk API request timeout')); });
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
@@ -63,8 +84,11 @@ function apiCallAuth(method, urlPath, body) {
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token,
         },
+        timeout: 60000,
       };
       if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
+      const agent = getProxyAgent();
+      if (agent) opts.agent = agent;
 
       const req = https.request(opts, (res) => {
         let chunks = [];
@@ -77,6 +101,7 @@ function apiCallAuth(method, urlPath, body) {
           }
         });
       });
+      req.on('timeout', () => { req.destroy(); reject(new Error('SeaTalk API request timeout')); });
       req.on('error', reject);
       if (data) req.write(data);
       req.end();
