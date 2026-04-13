@@ -57,6 +57,50 @@ if (!SHEET_ID || SHEET_ID === 'your_google_sheet_id_here') {
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
 oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
+const GOOGLE_API_PROXY = (process.env.GOOGLE_API_PROXY || '').replace(/\/+$/, '');
+const GOOGLE_API_PROXY_KEY = process.env.GOOGLE_API_PROXY_KEY || '';
+
+if (GOOGLE_API_PROXY) {
+  console.log('[Google API] Using proxy:', GOOGLE_API_PROXY);
+
+  // Override OAuth2 token endpoint
+  oauth2Client.endpoints = {
+    ...oauth2Client.endpoints,
+    oauth2TokenUrl: `${GOOGLE_API_PROXY}/oauth2.googleapis.com/token`,
+  };
+
+  // Override gaxios _defaultAdapter to rewrite googleapis URLs before fetch
+  try {
+    const { Gaxios } = require('gaxios');
+    const origDefaultAdapter = Gaxios.prototype._defaultAdapter;
+    if (origDefaultAdapter) {
+      Gaxios.prototype._defaultAdapter = async function (config) {
+        if (config && config.url) {
+          const urlStr = typeof config.url === 'string' ? config.url : config.url.toString();
+          try {
+            const u = new URL(urlStr);
+            const needsProxy = u.hostname.endsWith('.googleapis.com');
+            const isProxy = u.hostname === new URL(GOOGLE_API_PROXY).hostname;
+            if (needsProxy || isProxy) {
+              if (needsProxy) {
+                config.url = `${GOOGLE_API_PROXY}/${u.hostname}${u.pathname}${u.search}`;
+              }
+              if (config.headers instanceof Headers || (config.headers && typeof config.headers.set === 'function')) {
+                config.headers.set('X-Proxy-Key', GOOGLE_API_PROXY_KEY);
+              } else if (config.headers && typeof config.headers === 'object') {
+                config.headers['X-Proxy-Key'] = GOOGLE_API_PROXY_KEY;
+              } else {
+                config.headers = { 'X-Proxy-Key': GOOGLE_API_PROXY_KEY };
+              }
+            }
+          } catch {}
+        }
+        return origDefaultAdapter.call(this, config);
+      };
+    }
+  } catch {}
+}
+
 const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
 
 // --------------- Data Cache ---------------
@@ -717,14 +761,15 @@ server.listen(PORT, '0.0.0.0', async () => {
   setInterval(triggerAlphaSync, 30 * 60 * 1000);
 
   // SeaTalk workday group push at 10:30 Beijing time (UTC+8)
-  if (process.env.SEATALK_APP_ID) {
-    seatalkBot.scheduleDailyPush(
-      10,
-      30,
-      activitiesForSeaTalkPush,
-      async () => pushDailyCalendarImageToGroup()
-    );
-  }
+  // >>> 暂停定时推送：当前无活动，待恢复时取消注释以下代码 <<<
+  // if (process.env.SEATALK_APP_ID) {
+  //   seatalkBot.scheduleDailyPush(
+  //     10,
+  //     30,
+  //     activitiesForSeaTalkPush,
+  //     async () => pushDailyCalendarImageToGroup()
+  //   );
+  // }
 
   setInterval(poll, POLL_INTERVAL);
 });
