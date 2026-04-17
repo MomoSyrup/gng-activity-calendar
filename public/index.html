@@ -27,7 +27,7 @@
           <span class="dot"></span>
           <span class="label">连接中…</span>
         </div>
-        <button class="version-tag header-version" id="version-btn">v0.3.24</button>
+        <button class="version-tag header-version" id="version-btn">v0.3.25</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -76,6 +76,19 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.25</span>
+            <span class="changelog-date">2026-04-17</span>
+          </div>
+          <ul class="changelog-list">
+            <li>移除服务端旧的 `/api/deploy` webhook 部署入口，统一切换为 GitHub Actions 自动部署链路</li>
+            <li>新增 `/healthz` 与 `/readyz` 健康检查接口，补充运行时状态与初始化可用性判断</li>
+            <li>增加环境变量校验、共享活动期别逻辑、语法检查与单元测试，并让部署前自动执行 `npm run check`</li>
+            <li>甘特年份推断和人工修正规则改为集中配置，前端 Event 上传逻辑也拆成独立模块</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">
