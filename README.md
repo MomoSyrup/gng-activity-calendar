@@ -16,7 +16,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 - 支持 SeaTalk 私聊回复、群消息推送、群图片推送
 - 可将活动数据同步到 Alpha Knowledge
 - 支持通过 Cloudflare Worker 代理 Google API 请求
-- 支持通过 GitHub webhook 在服务器上自动拉取并重启服务
+- 支持通过 GitHub Actions 自动连接服务器并完成发布
 
 ## 技术栈
 
@@ -45,6 +45,12 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 │   ├── send-group-calendar-image-push.js
 │   ├── render-calendar-image-html.js
 │   └── render-calendar-image.py  # 旧版渲染器，当前主链路已改为 HTML/Puppeteer
+├── .github/workflows/deploy.yml  # GitHub Actions 自动部署
+├── ecosystem.config.cjs          # PM2 运行配置
+├── ops/
+│   ├── deploy.sh                 # 服务器发布脚本
+│   ├── bootstrap-server.sh       # 服务器初始化脚本
+│   └── nginx/                    # Nginx 反向代理模板
 ├── cloudflare-worker/            # Google API 代理 Worker（可选）
 ├── data/                         # 活动快照、上传目录、Event.xlsx 等运行时数据
 ├── README.md
@@ -176,15 +182,40 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 
 这个项目当前就是要同步到服务器上的，代码里已经保留了两种链路。
 
-### 推荐链路：GitHub -> 服务器自动部署
+### 推荐链路：GitHub Actions -> SSH -> 服务器自动部署
 
-当前仓库已连接 GitHub 远端。服务端的 `/api/deploy` webhook 在收到 GitHub `push` 事件后，会在服务器上执行：
+当前仓库已内置以下部署骨架：
 
-1. `git pull origin master`
-2. `npm install --production`
-3. `pm2 restart gng-activity-calendar`
+- [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)
+- [`ecosystem.config.cjs`](./ecosystem.config.cjs)
+- [`ops/deploy.sh`](./ops/deploy.sh)
+- [`ops/bootstrap-server.sh`](./ops/bootstrap-server.sh)
+- [`ops/nginx/gng-activity-calendar.conf`](./ops/nginx/gng-activity-calendar.conf)
+
+推荐发布流程：
+
+1. 本地提交并 push 到 GitHub `master`
+2. GitHub Actions 连接服务器
+3. Actions 将当前仓库打包成发布包并上传到服务器
+4. 服务器执行 `ops/deploy.sh`
+5. 脚本在服务器上执行：
+   - 解压发布包
+   - `rsync` 到应用目录（保留 `.env`、`data/`）
+   - `npm ci --omit=dev`
+   - `pm2 restart gng-activity-calendar --update-env`
+   - `curl http://127.0.0.1:<PORT>/api/calendar` 健康检查
 
 这条链路适合正式更新，也是最推荐的同步方式。
+
+### GitHub Actions 需要的 Secrets
+
+在仓库 Settings -> Secrets and variables -> Actions 中配置：
+
+- `SERVER_HOST`
+- `SERVER_USER`
+- `SERVER_SSH_KEY`
+- `SERVER_PORT`（可选，默认 `22`）
+- `SERVER_APP_DIR`（可选，默认 `/opt/gng-activity-calendar`）
 
 ### 备用链路：本地直传服务器
 
@@ -223,6 +254,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 - SeaTalk 每日定时推送代码目前在 `server.js` 中被注释暂停，恢复前请先确认业务需要。
 - 活动解析依赖较多业务规则和别名匹配，调整 Sheet 结构时要重点检查 `parser.js`。
 - 第二份表的甘特解析包含固定行号与年度假设，跨新年度时需要重点复核。
+- 既然仓库已经切到 GitHub Actions 部署，建议在 Nginx 层直接封掉 `/api/deploy`，把旧 webhook 部署链路降级为兼容路径。
 
 ## 文档说明
 

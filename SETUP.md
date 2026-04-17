@@ -251,29 +251,68 @@ PUPPETEER_EXECUTABLE_PATH=
 
 这个项目最后是要同步到服务器上的，当前代码里已经体现了两种方式。
 
-### 10.1 推荐方式：GitHub webhook 自动部署
+### 10.1 推荐方式：GitHub Actions 自动部署
 
-服务端提供：
+当前仓库已经改为更推荐的路径：GitHub Actions 通过 SSH 登录服务器执行部署脚本。
+
+仓库内的关键文件：
+
+- `.github/workflows/deploy.yml`
+- `ecosystem.config.cjs`
+- `ops/deploy.sh`
+- `ops/bootstrap-server.sh`
+- `ops/nginx/gng-activity-calendar.conf`
+
+首次上服务器建议先执行：
+
+```bash
+bash ops/bootstrap-server.sh
+```
+
+然后把生产环境 `.env` 放到：
+
+```text
+/opt/gng-activity-calendar/.env
+```
+
+GitHub Actions 需要以下仓库 Secrets：
+
+```text
+SERVER_HOST
+SERVER_USER
+SERVER_SSH_KEY
+SERVER_PORT        # 可选，默认 22
+SERVER_APP_DIR     # 可选，默认 /opt/gng-activity-calendar
+```
+
+每次 push 到 `master` 后，Actions 会远程执行：
+
+1. 将当前仓库打成发布包
+2. 通过 SSH 上传到服务器
+3. 使用 `rsync` 同步到 `/opt/gng-activity-calendar`
+4. 保留服务器本地的 `.env`、`data/`
+5. 执行 `npm ci --omit=dev`
+6. 使用 PM2 启动或重启 `gng-activity-calendar`
+7. 调用本机 `/api/calendar` 做健康检查
+
+### 10.2 旧方式：服务端 webhook 自动部署
+
+项目里仍然保留了旧的 webhook 入口：
 
 ```text
 POST /api/deploy
 ```
 
-当 GitHub 仓库发生 `push` 事件时，服务端会：
+它收到 GitHub `push` 事件后会：
 
 1. 校验 `DEPLOY_SECRET`
 2. 执行 `git pull origin master`
 3. 执行 `npm install --production`
 4. 执行 `pm2 restart gng-activity-calendar`
 
-因此推荐的正式流程是：
+这个路径仍能用，但不再是推荐主链路。建议等 GitHub Actions 跑通后，在 Nginx 层直接拦掉 `/api/deploy`。
 
-1. 本地修改并测试
-2. 提交到 Git
-3. Push 到 GitHub
-4. 由 GitHub webhook 触发服务器更新
-
-### 10.2 备用方式：本地直传服务器
+### 10.3 备用方式：本地直传服务器
 
 项目本地还有两个辅助脚本：
 
@@ -289,15 +328,16 @@ POST /api/deploy
 
 - 仅在可信机器保留这些脚本
 - 不要把敏感凭据重新提交进仓库
-- 把正式发布流程尽量收敛到 GitHub webhook
+- 把正式发布流程尽量收敛到 GitHub Actions
 
-### 10.3 当前服务器约定
+### 10.4 当前服务器约定
 
 根据现有脚本，线上一般约定为：
 
 - 项目目录：`/opt/gng-activity-calendar`
 - PM2 进程名：`gng-activity-calendar`
 - 服务器 Event 文件：`/opt/gng-activity-calendar/data/Event.xlsx`
+- Nginx 模板：`ops/nginx/gng-activity-calendar.conf`
 
 ## 11. 常见问题
 
@@ -319,5 +359,5 @@ POST /api/deploy
 
 - 服务器 `.env` 是否同步
 - 服务器上的 `Event.xlsx` 是否是最新的
-- GitHub webhook 是否成功触发
+- GitHub Actions workflow 是否成功执行
 - PM2 是否真的重启到了最新代码
