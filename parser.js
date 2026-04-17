@@ -1,4 +1,9 @@
 const DATE_RE = /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/;
+const {
+  GANTT_COLUMN_START,
+  GANTT_ROWS_TO_PARSE,
+  resolveGanttDate,
+} = require('./config/activity-rules');
 
 function normalizeDate(text) {
   if (!text) return null;
@@ -250,29 +255,27 @@ function preferChineseNames(names) {
   return keep;
 }
 
-function parseCalendarGantt(calendarRows) {
+function parseCalendarGantt(calendarRows, options) {
   if (!calendarRows || calendarRows.length < 5) return [];
+  const settings = options || {};
 
   const dateRow = calendarRows[3];
   if (!dateRow) return [];
 
-  const COL_START = 29;
   const colToDate = {};
-  for (let ci = COL_START; ci < dateRow.length; ci++) {
+  for (let ci = GANTT_COLUMN_START; ci < dateRow.length; ci++) {
     const cell = String(dateRow[ci] || '').trim();
     const m = cell.match(/^(\d{1,2})\/(\d{1,2})$/);
     if (m) {
       const month = parseInt(m[1], 10);
       const day = parseInt(m[2], 10);
-      const year = month >= 8 ? 2025 : 2026;
-      colToDate[ci] = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      colToDate[ci] = resolveGanttDate(month, day, settings.referenceDate);
     }
   }
 
   const results = [];
-  const ROWS_TO_PARSE = [8, 11, 13, 15, 16, 17, 18, 19, 20, 24, 29, 30];
 
-  for (const r of ROWS_TO_PARSE) {
+  for (const r of GANTT_ROWS_TO_PARSE) {
     if (r >= calendarRows.length) continue;
     const row = calendarRows[r];
     if (!row) continue;
@@ -281,7 +284,7 @@ function parseCalendarGantt(calendarRows) {
 
     // Collect all non-empty cells in the calendar area
     const cells = [];
-    for (let ci = COL_START; ci < row.length; ci++) {
+    for (let ci = GANTT_COLUMN_START; ci < row.length; ci++) {
       const raw = String(row[ci] || '').trim();
       if (raw) cells.push({ col: ci, raw });
     }
@@ -661,4 +664,9 @@ function parseSheet(rows, sheetName) {
   return activities;
 }
 
-module.exports = { parseActivities };
+module.exports = {
+  parseActivities,
+  _internal: {
+    parseCalendarGantt,
+  },
+};

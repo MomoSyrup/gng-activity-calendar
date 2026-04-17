@@ -300,24 +300,24 @@ SERVER_APP_DIR     # 可选，默认 /opt/gng-activity-calendar
 项目里仍然保留了旧的 webhook 入口：
 
 ```text
-POST /api/deploy
+- `GET /healthz`
+- `GET /readyz`
 ```
 
 它收到 GitHub `push` 事件后会：
 
-1. 校验 `DEPLOY_SECRET`
-2. 执行 `git pull origin master`
-3. 执行 `npm install --production`
-4. 执行 `pm2 restart gng-activity-calendar`
+1. 访问 `GET /healthz` 检查进程是否存活
+2. 查看 GitHub Actions 部署 run 是否成功
+3. 在服务器上执行 `npm run check`
+4. 确认 `pm2 restart gng-activity-calendar --update-env` 已由部署脚本完成
 
-这个路径仍能用，但不再是推荐主链路。建议等 GitHub Actions 跑通后，在 Nginx 层直接拦掉 `/api/deploy`。
+`/api/deploy` 已从服务代码中移除，正式发布链路只保留 GitHub Actions。
 
 ### 10.3 备用方式：本地直传服务器
 
 项目本地还有两个辅助脚本：
 
-- `upload.js`
-- `deploy.js`
+- 旧的 `upload.js` / `deploy.js` 已退役
 
 它们是本地运维脚本，已被 `.gitignore` 忽略，可用于：
 

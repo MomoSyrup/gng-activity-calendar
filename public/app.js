@@ -8,6 +8,8 @@
   var configView   = document.getElementById('config-check-view');
   var updateTimeEl = document.getElementById('update-time');
   var themeToggle  = document.getElementById('theme-toggle');
+  var activityDisplay = window.GngActivityDisplay || {};
+  var eventUpload = window.GngEventUpload || {};
 
   var activeTab = '__calendar__';
   var activeTypeFilter = 'all';
@@ -116,6 +118,16 @@
   // -------- Event Upload --------
 
   function initEventUploadPanel() {
+    if (eventUpload.initEventUploadPanel) {
+      eventUpload.initEventUploadPanel({
+        onSuccess: function () {
+          refreshCalendarData();
+          updateTimestamp();
+        }
+      });
+      return;
+    }
+
     var form = document.getElementById('event-upload-form');
     if (!form) return;
     var fileInput = document.getElementById('event-file-input');
@@ -296,6 +308,7 @@
   function getColor(name) { return activityColorMap[name] || '#999'; }
 
   function activityIdentityKey(a) {
+    if (activityDisplay.activityIdentityKey) return activityDisplay.activityIdentityKey(a);
     return [
       (a && a.name) || '',
       (a && a.startDate) || '',
@@ -306,6 +319,7 @@
   }
 
   function buildPeriodIndexMap(activities) {
+    if (activityDisplay.buildPeriodIndexMap) return activityDisplay.buildPeriodIndexMap(activities);
     var byName = {};
     (activities || []).forEach(function (a) {
       var name = (a && a.name) || '';
@@ -334,6 +348,7 @@
   }
 
   function getDisplayName(a, periodMap) {
+    if (activityDisplay.getDisplayName) return activityDisplay.getDisplayName(a, periodMap);
     var base = (a && a.name) || '';
     var idx = periodMap ? periodMap[activityIdentityKey(a)] : null;
     return idx ? (base + '（第' + idx + '期）') : base;

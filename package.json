@@ -5,6 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "lint": "node scripts/check-syntax.js",
+    "test": "node --test",
+    "check": "npm run lint && npm run test",
     "pm2:start": "pm2 start ecosystem.config.cjs --env production",
     "pm2:restart": "pm2 restart gng-activity-calendar --update-env"
   },
@@ -12,6 +15,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20.20 <25"
+  },
   "dependencies": {
     "dotenv": "^17.3.1",
     "express": "^5.2.1",

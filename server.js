@@ -6,62 +6,52 @@ const { Server } = require('socket.io');
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
-const { execSync, execFile } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const multer = require('multer');
 const { parseActivities } = require('./parser');
+const { env, envWarnings } = require('./config/env');
+const {
+  applyManualDateCorrections,
+  isExcludedActivityName,
+} = require('./config/activity-rules');
 const excelReader = require('./excel-reader');
 const alphaSync = require('./alpha-knowledge-sync');
 const seatalkBot = require('./seatalk-bot');
+const logger = require('./lib/logger');
+const packageInfo = require('./package.json');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = process.env.PORT || 3000;
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2;
-const POLL_INTERVAL_RAW = parseInt(process.env.POLL_INTERVAL, 10);
-const POLL_INTERVAL = Math.max(Number.isFinite(POLL_INTERVAL_RAW) ? POLL_INTERVAL_RAW : 30000, 30000);
+const PORT = env.PORT;
+const SHEET_ID = env.GOOGLE_SHEET_ID;
+const SHEET_ID_2 = env.GOOGLE_SHEET_ID_2;
+const POLL_INTERVAL = env.POLL_INTERVAL;
 const ACTIVITY_SNAPSHOT_PATH = path.join(__dirname, 'data', 'activity-snapshot.json');
-const EVENT_EXCEL_PATH = process.env.EVENT_EXCEL_PATH || path.join(__dirname, 'data', 'Event.xlsx');
+const EVENT_EXCEL_PATH = env.EVENT_EXCEL_PATH || path.join(__dirname, 'data', 'Event.xlsx');
 const EVENT_UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'uploads');
 
 fs.mkdirSync(EVENT_UPLOAD_TMP_DIR, { recursive: true });
 
+envWarnings.forEach((warning) => logger.warn('config_warning', { warning }));
+
 // --------------- Google Sheets Auth (OAuth2) ---------------
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
-
-if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN) {
-  console.error(
-    'Missing OAuth2 credentials. Make sure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ' +
-    'and GOOGLE_REFRESH_TOKEN are set in .env.\n' +
-    'Run "node auth.js" to complete the authorization flow and obtain a refresh token.'
-  );
-  process.exit(1);
-}
-
-if (!SHEET_ID || SHEET_ID === 'your_google_sheet_id_here') {
-  console.error(
-    'Set GOOGLE_SHEET_ID in .env to your Google Sheet ID ' +
-    '(the long string in the sheet URL).'
-  );
-  process.exit(1);
-}
+const CLIENT_ID = env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+const REFRESH_TOKEN = env.GOOGLE_REFRESH_TOKEN;
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
 oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-const GOOGLE_API_PROXY = (process.env.GOOGLE_API_PROXY || '').replace(/\/+$/, '');
-const GOOGLE_API_PROXY_KEY = process.env.GOOGLE_API_PROXY_KEY || '';
+const GOOGLE_API_PROXY = (env.GOOGLE_API_PROXY || '').replace(/\/+$/, '');
+const GOOGLE_API_PROXY_KEY = env.GOOGLE_API_PROXY_KEY || '';
 
 if (GOOGLE_API_PROXY) {
-  console.log('[Google API] Using proxy:', GOOGLE_API_PROXY);
+  logger.info('google_api_proxy_enabled', { proxy: GOOGLE_API_PROXY });
 
   // Override OAuth2 token endpoint
   oauth2Client.endpoints = {
@@ -110,6 +100,13 @@ let cachedDataJson = null;
 let cachedCalendarRows = null;
 let cachedConfigRows = null;
 let cachedActivitiesSnapshot = [];
+const runtimeState = {
+  startedAt: Date.now(),
+  initialLoadComplete: false,
+  lastPollSuccessAt: null,
+  lastPollError: '',
+  lastSnapshotReason: '',
+};
 
 const upload = multer({
   dest: EVENT_UPLOAD_TMP_DIR,
@@ -123,10 +120,10 @@ function loadActivitySnapshotFromDisk() {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
       cachedActivitiesSnapshot = parsed;
-      console.log(`[cache] Loaded ${parsed.length} activities from snapshot`);
+      logger.info('activity_snapshot_loaded', { count: parsed.length });
     }
   } catch (err) {
-    console.error('[cache] Failed to load activity snapshot:', err.message);
+    logger.error('activity_snapshot_load_failed', { error: err.message });
   }
 }
 
@@ -136,9 +133,12 @@ function saveActivitySnapshot(activities, reason) {
     fs.mkdirSync(path.dirname(ACTIVITY_SNAPSHOT_PATH), { recursive: true });
     fs.writeFileSync(ACTIVITY_SNAPSHOT_PATH, JSON.stringify(activities), 'utf8');
     cachedActivitiesSnapshot = activities;
-    if (reason) console.log(`[cache] Activity snapshot updated (${activities.length}) by ${reason}`);
+    runtimeState.lastSnapshotReason = reason || '';
+    if (reason) {
+      logger.info('activity_snapshot_updated', { count: activities.length, reason });
+    }
   } catch (err) {
-    console.error('[cache] Failed to save activity snapshot:', err.message);
+    logger.error('activity_snapshot_save_failed', { error: err.message });
   }
 }
 
@@ -180,7 +180,7 @@ async function fetchSheet2Data() {
       configRows: data.sheets['活动配置'] || null,
     };
   } catch (err) {
-    console.error('Failed to fetch Sheet 2 data:', err.message);
+    logger.error('sheet2_fetch_failed', { error: err.message });
     return { calendarRows: null, configRows: null };
   }
 }
@@ -202,16 +202,19 @@ async function poll() {
       const typedActivities = buildTypedActivities();
       saveActivitySnapshot(typedActivities, 'poll');
       const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
-      console.log(
-        `[${new Date().toLocaleTimeString()}] Data changed – ` +
-        `${data.sheetNames.length} sheet(s), ${totalRows} row(s) – ` +
-        `pushing to ${io.engine.clientsCount} client(s)`
-      );
+      logger.info('sheet_poll_changed', {
+        sheetCount: data.sheetNames.length,
+        totalRows,
+        clients: io.engine.clientsCount,
+      });
       io.emit('sheet:update', cachedData);
       triggerAlphaSync();
     }
+    runtimeState.lastPollSuccessAt = new Date().toISOString();
+    runtimeState.lastPollError = '';
   } catch (err) {
-    console.error('Polling error:', err.message);
+    runtimeState.lastPollError = err.message;
+    logger.error('sheet_poll_failed', { error: err.message });
   }
 }
 
@@ -280,21 +283,51 @@ app.post('/callback', collectRawBody, (req, res) => {
 
 // --------------- Static Files & REST API ---------------
 
+app.use('/shared', express.static(path.join(__dirname, 'shared')));
 app.use(express.static(path.join(__dirname, 'public')));
+
+function buildHealthPayload() {
+  return {
+    status: 'ok',
+    version: packageInfo.version,
+    uptimeSeconds: Math.floor(process.uptime()),
+    startedAt: new Date(runtimeState.startedAt).toISOString(),
+    pollIntervalMs: POLL_INTERVAL,
+    snapshotActivities: cachedActivitiesSnapshot.length,
+    cachedSheetCount: cachedData ? cachedData.sheetNames.length : 0,
+    lastPollSuccessAt: runtimeState.lastPollSuccessAt,
+    lastPollError: runtimeState.lastPollError || null,
+    initialLoadComplete: runtimeState.initialLoadComplete,
+  };
+}
+
+function isReady() {
+  return runtimeState.initialLoadComplete || cachedActivitiesSnapshot.length > 0;
+}
+
+app.get('/healthz', (_req, res) => {
+  res.json(buildHealthPayload());
+});
+
+app.get('/readyz', (_req, res) => {
+  const payload = buildHealthPayload();
+  payload.ready = isReady();
+  res.status(payload.ready ? 200 : 503).json(payload);
+});
 
 app.get('/api/data', (_req, res) => {
   res.json({ data: cachedData });
 });
 
 app.post('/api/seatalk-push', (req, res) => {
-  if (req.headers['x-internal-key'] !== (process.env.SEATALK_SIGNING_SECRET || '')) {
+  if (req.headers['x-internal-key'] !== (env.SEATALK_SIGNING_SECRET || '')) {
     return res.status(403).json({ error: 'forbidden' });
   }
   activitiesForSeaTalkPush()
     .then((activities) => seatalkBot.buildActivitySummary(activities))
     .then((summary) => seatalkBot.pushToGroup(summary, true))
     .then((resp) => {
-      res.json({ ok: true, groupId: process.env.SEATALK_GROUP_ID, resp });
+      res.json({ ok: true, groupId: env.SEATALK_GROUP_ID, resp });
     })
     .catch((err) => {
       res.status(500).json({ error: err.message });
@@ -302,10 +335,10 @@ app.post('/api/seatalk-push', (req, res) => {
 });
 
 app.post('/api/seatalk-image-push', express.json(), async (req, res) => {
-  if (req.headers['x-internal-key'] !== (process.env.SEATALK_SIGNING_SECRET || '')) {
+  if (req.headers['x-internal-key'] !== (env.SEATALK_SIGNING_SECRET || '')) {
     return res.status(403).json({ error: 'forbidden' });
   }
-  const targetGroupId = (req.body && req.body.group_id) || process.env.SEATALK_GROUP_ID;
+  const targetGroupId = (req.body && req.body.group_id) || env.SEATALK_GROUP_ID;
   if (!targetGroupId) {
     return res.status(400).json({ error: 'no group_id' });
   }
@@ -324,44 +357,6 @@ app.post('/api/seatalk-image-push', express.json(), async (req, res) => {
   } catch (err) {
     console.error('[image-push] Error:', err.message);
     res.status(500).json({ error: err.stderr || err.message });
-  }
-});
-
-// --------------- GitHub Webhook Auto-Deploy ---------------
-
-app.post('/api/deploy', collectRawBody, (req, res) => {
-  const secret = process.env.DEPLOY_SECRET;
-  if (!secret) return res.status(500).json({ error: 'DEPLOY_SECRET not configured' });
-
-  const sig = req.headers['x-hub-signature-256'] || '';
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
-  if (sig !== expected) {
-    console.error('[Deploy] Invalid signature');
-    return res.status(403).json({ error: 'invalid signature' });
-  }
-
-  const event = req.headers['x-github-event'];
-  if (event === 'ping') {
-    console.log('[Deploy] GitHub ping received');
-    return res.json({ ok: true, msg: 'pong' });
-  }
-
-  if (event !== 'push') {
-    return res.json({ ok: true, msg: 'ignored event: ' + event });
-  }
-
-  console.log('[Deploy] Push event received, pulling and restarting...');
-  res.json({ ok: true, msg: 'deploying' });
-
-  try {
-    const pullOut = execSync('git pull origin master', { cwd: __dirname, timeout: 30000 }).toString();
-    console.log('[Deploy] git pull:', pullOut.trim());
-    const npmOut = execSync('npm install --production', { cwd: __dirname, timeout: 60000 }).toString();
-    console.log('[Deploy] npm install:', npmOut.trim().slice(-200));
-    const pmOut = execSync('pm2 restart gng-activity-calendar', { timeout: 15000 }).toString();
-    console.log('[Deploy] pm2 restart:', pmOut.trim().slice(-200));
-  } catch (err) {
-    console.error('[Deploy] Error:', err.message);
   }
 });
 
@@ -396,24 +391,6 @@ const NAME_KEYWORDS = [
   ['ramadan', ['ramadan', '斋月', '寻宝']],
   ['树', ['树', 'tree']],
 ];
-
-const EXCLUDED_ACTIVITY_NAMES = new Set([
-  '网页排位冲刺活动',
-]);
-
-function applyManualDateCorrections(activities) {
-  return activities.map((a) => {
-    if (
-      a &&
-      a.name === '赛季组队冲刺网页活动' &&
-      a.startDate === '2026-03-26' &&
-      a.endDate === '2026-04-08'
-    ) {
-      return { ...a, endDate: '2026-04-14' };
-    }
-    return a;
-  });
-}
 
 function nameMatch(gsName, excelNote, excelTxtName) {
   const gs = (gsName || '').toLowerCase();
@@ -590,12 +567,12 @@ function supplementWeekendSupply(activities) {
 function buildTypedActivities() {
   if (!cachedData) {
     let fallback = Array.isArray(cachedActivitiesSnapshot) ? cachedActivitiesSnapshot : [];
-    fallback = fallback.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has((a && a.name) || ''));
+    fallback = fallback.filter((a) => !isExcludedActivityName((a && a.name) || ''));
     fallback = applyManualDateCorrections(fallback);
     return fallback;
   }
   let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
-  activities = activities.filter((a) => !EXCLUDED_ACTIVITY_NAMES.has(a.name || ''));
+  activities = activities.filter((a) => !isExcludedActivityName(a.name || ''));
   activities = applyManualDateCorrections(activities);
   activities = supplementWeekendSupply(activities);
   activities = attachEventTypes(activities);
@@ -617,12 +594,12 @@ async function activitiesForSeaTalkPush() {
 }
 
 function triggerAlphaSync() {
-  const apiKey = process.env.ALPHA_KNOWLEDGE_API_KEY;
+  const apiKey = env.ALPHA_KNOWLEDGE_API_KEY;
   if (!apiKey) return;
   try {
     const activities = buildTypedActivities();
-    const expertId = process.env.ALPHA_KNOWLEDGE_EXPERT_ID || '7420';
-    const citationURL = process.env.ALPHA_KNOWLEDGE_CITATION_URL || '';
+    const expertId = env.ALPHA_KNOWLEDGE_EXPERT_ID || '7420';
+    const citationURL = env.ALPHA_KNOWLEDGE_CITATION_URL || '';
     alphaSync.sync(activities, apiKey, expertId, citationURL);
   } catch (err) {
     console.error('[AlphaKnowledge] Trigger error:', err.message);
@@ -630,7 +607,7 @@ function triggerAlphaSync() {
 }
 
 async function pushDailyCalendarImageToGroup() {
-  const groupId = process.env.SEATALK_GROUP_ID;
+  const groupId = env.SEATALK_GROUP_ID;
   if (!groupId) {
     throw new Error('SEATALK_GROUP_ID not configured');
   }
@@ -645,7 +622,7 @@ async function pushDailyCalendarImageToGroup() {
         env: process.env,
         timeout: 120000,
       });
-      console.log('[SeaTalk] Daily image push done:', (stdout || '').trim());
+      logger.info('seatalk_daily_image_push_done', { output: (stdout || '').trim() });
       return;
     } catch (err) {
       const msg = err.stderr || err.stdout || err.message || '';
@@ -735,7 +712,11 @@ io.on('connection', (socket) => {
 // --------------- Start ---------------
 
 server.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  logger.info('server_started', {
+    port: PORT,
+    version: packageInfo.version,
+    node: process.version,
+  });
 
   loadActivitySnapshotFromDisk();
   excelReader.load(EVENT_EXCEL_PATH);
@@ -748,11 +729,18 @@ server.listen(PORT, '0.0.0.0', async () => {
     cachedConfigRows = sheet2.configRows;
     saveActivitySnapshot(buildTypedActivities(), 'initial-load');
     const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
-    console.log(`Initial data loaded – ${data.sheetNames.length} sheet(s), ${totalRows} row(s)`);
-    if (sheet2.calendarRows) console.log(`Calendar sheet loaded – ${sheet2.calendarRows.length} row(s)`);
-    if (sheet2.configRows) console.log(`Config sheet loaded – ${sheet2.configRows.length} row(s)`);
+    runtimeState.initialLoadComplete = true;
+    runtimeState.lastPollSuccessAt = new Date().toISOString();
+    runtimeState.lastPollError = '';
+    logger.info('initial_data_loaded', {
+      sheetCount: data.sheetNames.length,
+      totalRows,
+      calendarRows: sheet2.calendarRows ? sheet2.calendarRows.length : 0,
+      configRows: sheet2.configRows ? sheet2.configRows.length : 0,
+    });
   } catch (err) {
-    console.error('Failed to load initial data:', err.message);
+    runtimeState.lastPollError = err.message;
+    logger.error('initial_data_load_failed', { error: err.message });
   }
 
   triggerAlphaSync();
@@ -762,7 +750,7 @@ server.listen(PORT, '0.0.0.0', async () => {
 
   // SeaTalk workday group push at 10:30 Beijing time (UTC+8)
   // >>> 暂停定时推送：当前无活动，待恢复时取消注释以下代码 <<<
-  // if (process.env.SEATALK_APP_ID) {
+  // if (env.SEATALK_APP_ID) {
   //   seatalkBot.scheduleDailyPush(
   //     10,
   //     30,

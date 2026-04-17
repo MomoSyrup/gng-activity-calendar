@@ -112,12 +112,12 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 | `/callback` | `POST` | SeaTalk 机器人回调入口 |
 | `/api/seatalk-push` | `POST` | 触发文字版群推送，需 `x-internal-key` |
 | `/api/seatalk-image-push` | `POST` | 触发图片版群推送，需 `x-internal-key` |
-| `/api/deploy` | `POST` | GitHub webhook 自动部署入口 |
+| `/healthz` | `GET` | 返回进程健康状态与运行时间 |
+| `/readyz` | `GET` | 返回是否已完成初始化加载或快照兜底可用 |
 
 说明：
 
 - `/api/seatalk-push` 和 `/api/seatalk-image-push` 会校验请求头 `x-internal-key`，其值需等于 `SEATALK_SIGNING_SECRET`。
-- `/api/deploy` 会校验 GitHub `x-hub-signature-256`，其签名密钥来自 `DEPLOY_SECRET`。
 
 ## 前端说明
 
@@ -176,7 +176,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 
 ### 部署
 
-- `DEPLOY_SECRET`
+- GitHub Actions Secrets：`SERVER_HOST`、`SERVER_USER`、`SERVER_SSH_KEY`、`SERVER_PORT`、`SERVER_APP_DIR`
 
 ## 服务器同步与发布
 
@@ -221,8 +221,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 
 项目中存在本地辅助脚本：
 
-- `upload.js`：通过 SFTP 上传项目文件到服务器
-- `deploy.js`：在服务器上执行命令
+- 旧的 `upload.js` / `deploy.js` 已退役，不再作为正式发布方式
 
 它们已被 `.gitignore` 忽略，属于本地/运维脚本，不是共享仓库的一部分。若继续使用这条链路，请只在可信机器上维护，并自行管理其中的敏感配置。
 
@@ -254,7 +253,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 - SeaTalk 每日定时推送代码目前在 `server.js` 中被注释暂停，恢复前请先确认业务需要。
 - 活动解析依赖较多业务规则和别名匹配，调整 Sheet 结构时要重点检查 `parser.js`。
 - 第二份表的甘特解析包含固定行号与年度假设，跨新年度时需要重点复核。
-- 既然仓库已经切到 GitHub Actions 部署，建议在 Nginx 层直接封掉 `/api/deploy`，把旧 webhook 部署链路降级为兼容路径。
+- `/api/deploy` 已从服务代码中移除，当前正式发布链路为 GitHub Actions -> SSH -> PM2。
 
 ## 文档说明
 

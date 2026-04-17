@@ -31,6 +31,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      - name: Validate Repository
+        shell: bash
+        run: npm run check
+
       - name: Validate Secrets
         shell: bash
         run: |

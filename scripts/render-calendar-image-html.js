@@ -10,6 +10,7 @@
 const fs   = require('fs');
 const path = require('path');
 const http = require('http');
+const activityDisplay = require('../shared/activity-display');
 
 const outPath = process.argv[2] || '/opt/gng-activity-calendar/public/generated/calendar-push-latest.png';
 const apiUrl  = process.argv[3] || 'http://127.0.0.1:3000/api/calendar';
@@ -48,27 +49,15 @@ function dayDiff(a, b) {
 }
 
 function activityKey(a) {
-  return [a.name || '', a.startDate || '', a.endDate || '', a.source || '', a.category || ''].join('|');
+  return activityDisplay.activityIdentityKey(a);
 }
 
 function buildPeriodMap(acts) {
-  const byName = {};
-  for (const a of acts) {
-    if (!a.name) continue;
-    (byName[a.name] = byName[a.name] || []).push(a);
-  }
-  const out = {};
-  for (const list of Object.values(byName)) {
-    if (list.length <= 1) continue;
-    list.sort((a, b) => (a.startDate || '9999') < (b.startDate || '9999') ? -1 : 1);
-    list.forEach((a, i) => { out[activityKey(a)] = i + 1; });
-  }
-  return out;
+  return activityDisplay.buildPeriodIndexMap(acts);
 }
 
 function displayTitle(a, pm) {
-  const p = pm[activityKey(a)];
-  return p ? `${a.name}（第${p}期）` : (a.name || '');
+  return activityDisplay.getDisplayName(a, pm);
 }
 
 function isValid(a) {

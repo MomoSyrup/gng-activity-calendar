@@ -2,8 +2,6 @@ node_modules/
 .env
 ngrok/
 .cursor/
-deploy.js
-upload.js
 auto-sync.js
 auto-sync.bat
 data/

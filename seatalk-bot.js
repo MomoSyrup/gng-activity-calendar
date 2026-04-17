@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const activityDisplay = require('./shared/activity-display');
 
 let _proxyAgent = null;
 function getProxyAgent() {
@@ -291,50 +292,10 @@ function activityLineTitle(a) {
   return n;
 }
 
-function activityIdentityKey(a) {
-  return [
-    (a && a.name) || '',
-    (a && a.startDate) || '',
-    (a && a.endDate) || '',
-    (a && a.source) || '',
-    (a && a.category) || '',
-  ].join('|');
-}
-
-function buildPeriodIndexMap(activities) {
-  const byName = {};
-  for (const a of activities || []) {
-    const name = (a && a.name) || '';
-    if (!name) continue;
-    if (!byName[name]) byName[name] = [];
-    byName[name].push(a);
-  }
-
-  const periodMap = {};
-  for (const name of Object.keys(byName)) {
-    const list = byName[name]
-      .slice()
-      .sort((x, y) => {
-        const xs = x.startDate || '9999-99-99';
-        const ys = y.startDate || '9999-99-99';
-        if (xs !== ys) return xs.localeCompare(ys);
-        const xe = x.endDate || x.startDate || '9999-99-99';
-        const ye = y.endDate || y.startDate || '9999-99-99';
-        return xe.localeCompare(ye);
-      });
-    if (list.length <= 1) continue;
-    list.forEach((a, idx) => {
-      periodMap[activityIdentityKey(a)] = idx + 1;
-    });
-  }
-
-  return periodMap;
-}
-
 function displayTitleWithPeriod(a, periodMap) {
-  const base = activityLineTitle(a);
-  const period = periodMap ? periodMap[activityIdentityKey(a)] : null;
-  return period ? `${base}（第${period}期）` : base;
+  return activityDisplay.getDisplayName(a, periodMap, {
+    baseName: activityLineTitle(a),
+  });
 }
 
 function buildActivitySummary(activities, options) {
@@ -350,7 +311,7 @@ function buildActivitySummary(activities, options) {
   const upcoming = activities.filter((a) => activityMatchesWebUpcoming(a, today));
   upcoming.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
 
-  const periodMap = buildPeriodIndexMap(activities);
+  const periodMap = activityDisplay.buildPeriodIndexMap(activities);
   const lines = ['**GNG 活动日历**', `📅 ${today}`, '━━━━━━━━━━━━', ''];
 
   if (active.length > 0) {
