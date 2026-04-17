@@ -1,106 +1,323 @@
-# Google Cloud 前置配置指南
+# 初始化与部署说明
 
-本文档详细说明如何配置 Google Cloud，以便后端通过 OAuth 2.0（个人 Google 账号）访问 Google Sheets API。
+本文档用于把当前版本的 GNG 活动日历从零配置到可运行状态，并补充服务器同步方式。
 
----
+注意：旧版文档里提到的 `credentials.json`、`token.json`、Desktop App OAuth 流程已经不适用于当前代码。当前实现以 `.env` 中的 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REFRESH_TOKEN` 为准，并通过 `node auth.js` 获取 refresh token。
 
-## 第一步：创建 Google Cloud 项目
+## 1. 准备条件
+
+- Node.js 18 或更高版本
+- 一个可访问 Google Sheets API 的 Google 账号
+- 至少一份活动 Google Sheet
+- 可选：第二份活动排期/配置表
+- 可选：`Event.xlsx`
+- 可选：SeaTalk 机器人配置
+- 可选：Chromium/Chrome（用于图片渲染）
+
+## 2. 安装依赖
+
+在项目根目录执行：
+
+```bash
+npm install
+```
+
+## 3. 创建 Google Cloud 配置
+
+### 3.1 创建项目并启用 API
 
 1. 打开 [Google Cloud Console](https://console.cloud.google.com/)
-2. 如果你还没有 Google Cloud 账号，使用 Google 账号登录即可（免费）
-3. 点击页面顶部的 **项目选择器**（显示 "Select a project" 或已有项目名）
-4. 在弹窗中点击右上角的 **NEW PROJECT**（新建项目）
-5. 填写项目信息：
-   - **Project name**：输入一个容易识别的名称，例如 `sheet-sync`
-   - **Organization**：如果有组织可以选择，个人账号保持默认即可
-   - **Location**：保持默认
-6. 点击 **CREATE** 创建项目
-7. 等待几秒钟，页面顶部的通知会提示项目创建成功
-8. 点击通知中的 **SELECT PROJECT**，切换到新创建的项目
+2. 创建或选择一个项目
+3. 进入 `APIs & Services -> Library`
+4. 启用 `Google Sheets API`
 
-## 第二步：启用 Google Sheets API
+### 3.2 配置 OAuth consent screen
 
-1. 确保当前已选中刚创建的项目（页面顶部可确认）
-2. 在左侧导航栏中选择 **APIs & Services** > **Library**（API 库）
-   - 或者直接访问：https://console.cloud.google.com/apis/library
-3. 在搜索框中输入 `Google Sheets API`
-4. 点击搜索结果中的 **Google Sheets API**
-5. 在详情页中点击 **ENABLE**（启用）按钮
-6. 等待启用完成，页面会自动跳转到 API 概览页
+1. 进入 `APIs & Services -> OAuth consent screen`
+2. 选择 `External`
+3. 填写应用名称、支持邮箱、开发者邮箱
+4. 在测试用户中加入你自己的 Google 账号
 
-## 第三步：配置 OAuth 同意屏幕
+### 3.3 创建 OAuth Client ID
 
-OAuth 同意屏幕是用户授权时看到的页面，即使只有你自己使用也需要配置。
+当前项目的 `auth.js` 使用本地回调地址：
 
-1. 在左侧导航栏中选择 **APIs & Services** > **OAuth consent screen**
-   - 或者直接访问：https://console.cloud.google.com/apis/credentials/consent
-2. **User Type** 选择 **External**（外部），点击 **CREATE**
-3. 填写必填信息：
-   - **App name**：应用名称，例如 `Sheet Sync`
-   - **User support email**：选择你的邮箱
-   - **Developer contact information**：填写你的邮箱
-4. 其他字段可以留空，点击 **SAVE AND CONTINUE**
-5. 在 **Scopes**（权限范围）页面：
-   - 点击 **ADD OR REMOVE SCOPES**
-   - 搜索并勾选 `Google Sheets API` 下的 `.../auth/spreadsheets.readonly`（只读权限）
-   - 点击 **UPDATE**，然后 **SAVE AND CONTINUE**
-6. 在 **Test users**（测试用户）页面：
-   - 点击 **+ ADD USERS**
-   - 输入你自己的 Google 邮箱地址
-   - 点击 **ADD**，然后 **SAVE AND CONTINUE**
-7. 确认摘要页无误，点击 **BACK TO DASHBOARD**
-
-> **重要**：应用处于 "Testing"（测试）状态时，只有添加的测试用户才能授权。这对于个人使用完全足够，无需发布。
-
-## 第四步：创建 OAuth Client ID（客户端凭据）
-
-1. 在左侧导航栏中选择 **APIs & Services** > **Credentials**（凭据）
-   - 或者直接访问：https://console.cloud.google.com/apis/credentials
-2. 点击页面顶部的 **+ CREATE CREDENTIALS**（创建凭据）
-3. 在下拉菜单中选择 **OAuth client ID**
-4. **Application type** 选择 **Desktop app**（桌面应用）
-5. **Name** 可以保持默认或输入一个名称，例如 `Sheet Sync Desktop`
-6. 点击 **CREATE**（创建）
-7. 弹窗会显示 Client ID 和 Client Secret，点击 **DOWNLOAD JSON**（下载 JSON）
-8. **将下载的文件重命名为 `credentials.json`，并放置到项目根目录** `d:\C project\credentials.json`
-
-> **安全提示**：`credentials.json` 包含你的客户端密钥，请勿提交到 Git 或分享给他人。
-
-## 第五步：获取 Google Sheet ID
-
-Sheet ID 是 Google Sheet URL 中的一段字符串，用于标识具体的表格。
-
-例如，URL 为：
-```
-https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/edit
+```text
+http://localhost:3001/oauth2callback
 ```
 
-其中 `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms` 就是 Sheet ID。
+所以这里应创建：
 
-记录下你的 Sheet ID，后续配置 `.env` 文件时需要用到。
+- 类型：`Web application`
+- Authorized redirect URI：
+  `http://localhost:3001/oauth2callback`
 
-## 第六步：首次授权（启动项目后）
+创建完成后，记下：
 
-首次运行服务器时，程序会自动引导你完成授权：
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
-1. 终端会输出一个授权链接，在浏览器中打开
-2. 使用你的 Google 账号登录
-3. 如果看到 "Google hasn't verified this app" 警告，点击 **Advanced** > **Go to Sheet Sync (unsafe)**
-4. 点击 **Allow**（允许）授权应用访问你的 Google Sheets
-5. 授权成功后，程序会自动获取 token 并保存到 `token.json`
-6. 之后每次启动服务器都会自动使用保存的 token，无需重复授权
+## 4. 配置环境变量
 
-> **注意**：`token.json` 会在首次授权后自动生成，包含 refresh token，同样不要提交到 Git。
+复制模板：
 
----
+```bash
+copy .env.example .env
+```
 
-## 配置完成后的检查清单
+至少填写以下内容：
 
-- [ ] Google Cloud 项目已创建
-- [ ] Google Sheets API 已启用
-- [ ] OAuth 同意屏幕已配置，并添加了测试用户
-- [ ] OAuth Client ID 已创建（Desktop app 类型）
-- [ ] 凭据文件已下载并保存为 `credentials.json`（在项目根目录）
-- [ ] 已记录 Google Sheet ID
+```env
+GOOGLE_CLIENT_ID=你的客户端ID
+GOOGLE_CLIENT_SECRET=你的客户端密钥
+GOOGLE_SHEET_ID=主活动表ID
+```
 
-完成以上步骤后，就可以继续进行项目的代码开发了。首次启动服务器时会引导你完成 OAuth 授权。
+如果你有第二份排期/配置表，再补：
+
+```env
+GOOGLE_SHEET_ID_2=第二份表ID
+```
+
+补充说明：
+
+- `POLL_INTERVAL` 即使设置得更小，代码也会强制至少使用 `30000` 毫秒。
+- `EVENT_EXCEL_PATH` 默认是项目内的 `data/Event.xlsx`。
+- 所有可选配置项都已经写在 `.env.example` 里。
+
+## 5. 获取 refresh token
+
+运行：
+
+```bash
+node auth.js
+```
+
+脚本会：
+
+1. 打开浏览器授权页
+2. 回调到本地 `http://localhost:3001/oauth2callback`
+3. 在终端打印：
+
+```env
+GOOGLE_REFRESH_TOKEN=xxxx
+```
+
+把这行内容写入 `.env`。
+
+## 6. 准备 Event.xlsx
+
+项目支持通过 `Event.xlsx` 补齐活动类型与 Event 配置。
+
+有两种方式：
+
+### 方式 A：直接放到默认路径
+
+把文件放到：
+
+```text
+data/Event.xlsx
+```
+
+### 方式 B：自定义路径
+
+在 `.env` 中设置：
+
+```env
+EVENT_EXCEL_PATH=你的绝对路径
+```
+
+### 方式 C：运行后手动上传
+
+服务启动后可以在网页的“配置检查”页手动上传 `Event.xlsx`，接口为：
+
+```text
+POST /api/event-upload
+```
+
+字段名是 `eventFile`。
+
+## 7. 启动项目
+
+```bash
+npm start
+```
+
+默认访问地址：
+
+```text
+http://localhost:3000
+```
+
+启动后会发生这些事：
+
+1. 读取活动快照 `data/activity-snapshot.json`
+2. 加载 `Event.xlsx`
+3. 拉取 Google Sheets 数据
+4. 生成统一活动数据
+5. 提供网页与 API
+6. 启动轮询和前端推送
+
+## 8. 验证是否运行正常
+
+重点检查：
+
+- 浏览器是否能打开首页
+- `/api/calendar` 是否返回活动数组
+- 上传 `Event.xlsx` 后页面是否刷新
+- 控制台是否出现 Google Sheets 拉取成功日志
+
+可直接访问：
+
+```text
+http://localhost:3000/api/calendar
+```
+
+## 9. 可选功能配置
+
+### 9.1 第二份活动表
+
+如果你需要补充甘特排期与奖励配置，请设置：
+
+```env
+GOOGLE_SHEET_ID_2=第二份表ID
+```
+
+当前代码默认会尝试读取第二份表中的：
+
+- `1.0 event calendar`
+- `活动配置`
+
+### 9.2 SeaTalk 机器人
+
+配置以下变量：
+
+```env
+SEATALK_APP_ID=
+SEATALK_APP_SECRET=
+SEATALK_SIGNING_SECRET=
+SEATALK_GROUP_ID=
+```
+
+说明：
+
+- `/callback` 用于接收 SeaTalk 事件回调
+- `/api/seatalk-push` 与 `/api/seatalk-image-push` 也会使用 `SEATALK_SIGNING_SECRET` 作为内部调用校验
+- 工作日推送日期可通过 `PUSH_HOLIDAYS` 和 `PUSH_MAKEUP_WORKDAYS` 控制
+- 当前 `server.js` 里每日定时推送逻辑被注释暂停，如需恢复，请先确认业务状态
+
+### 9.3 Alpha Knowledge 同步
+
+配置：
+
+```env
+ALPHA_KNOWLEDGE_API_KEY=
+ALPHA_KNOWLEDGE_EXPERT_ID=7420
+ALPHA_KNOWLEDGE_CITATION_URL=
+```
+
+配置完成后，服务会在活动数据变化后自动同步 Markdown 知识文档。
+
+### 9.4 Google API 代理
+
+如果服务器无法直接访问 Google API，可配置 Cloudflare Worker 代理。
+
+主项目 `.env` 中需要：
+
+```env
+GOOGLE_API_PROXY=
+GOOGLE_API_PROXY_KEY=
+```
+
+Worker 项目位于：
+
+```text
+cloudflare-worker/
+```
+
+### 9.5 图片海报渲染
+
+图片推送使用 HTML + Puppeteer 渲染器，常见变量：
+
+```env
+CALENDAR_IMAGE_OUTPUT_PATH=
+CALENDAR_IMAGE_API_URL=
+PUPPETEER_EXECUTABLE_PATH=
+```
+
+如果服务器环境无法自动发现 Chromium，请显式设置 `PUPPETEER_EXECUTABLE_PATH`。
+
+## 10. 服务器同步与部署
+
+这个项目最后是要同步到服务器上的，当前代码里已经体现了两种方式。
+
+### 10.1 推荐方式：GitHub webhook 自动部署
+
+服务端提供：
+
+```text
+POST /api/deploy
+```
+
+当 GitHub 仓库发生 `push` 事件时，服务端会：
+
+1. 校验 `DEPLOY_SECRET`
+2. 执行 `git pull origin master`
+3. 执行 `npm install --production`
+4. 执行 `pm2 restart gng-activity-calendar`
+
+因此推荐的正式流程是：
+
+1. 本地修改并测试
+2. 提交到 Git
+3. Push 到 GitHub
+4. 由 GitHub webhook 触发服务器更新
+
+### 10.2 备用方式：本地直传服务器
+
+项目本地还有两个辅助脚本：
+
+- `upload.js`
+- `deploy.js`
+
+它们是本地运维脚本，已被 `.gitignore` 忽略，可用于：
+
+- 紧急上传文件到服务器
+- 在服务器上执行命令
+
+建议：
+
+- 仅在可信机器保留这些脚本
+- 不要把敏感凭据重新提交进仓库
+- 把正式发布流程尽量收敛到 GitHub webhook
+
+### 10.3 当前服务器约定
+
+根据现有脚本，线上一般约定为：
+
+- 项目目录：`/opt/gng-activity-calendar`
+- PM2 进程名：`gng-activity-calendar`
+- 服务器 Event 文件：`/opt/gng-activity-calendar/data/Event.xlsx`
+
+## 11. 常见问题
+
+### 11.1 为什么我把 `POLL_INTERVAL` 设成 5000 也没有每 5 秒轮询？
+
+因为代码里有最小保护，实际不会低于 30 秒。
+
+### 11.2 为什么旧文档说要 `credentials.json` 或 `token.json`？
+
+那是旧流程。当前版本通过 `auth.js` 直接输出 `GOOGLE_REFRESH_TOKEN`，不再依赖这两个文件。
+
+### 11.3 没有第二份表或 Event.xlsx 能跑吗？
+
+能跑，但活动类型、奖励信息、期别和某些补充排期会不完整。
+
+### 11.4 为什么部署后页面和本地不一致？
+
+优先检查：
+
+- 服务器 `.env` 是否同步
+- 服务器上的 `Event.xlsx` 是否是最新的
+- GitHub webhook 是否成功触发
+- PM2 是否真的重启到了最新代码

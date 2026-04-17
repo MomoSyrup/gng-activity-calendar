@@ -1,124 +1,232 @@
-# GNG活动日历
+# GNG 活动日历
 
-将 Google Sheet 的数据实时同步到网页上。后端定时轮询 Google Sheets API，检测到数据变化后通过 WebSocket 即时推送给所有已连接的客户端。
+GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 Google Sheets、第二份活动排期/配置表以及 `Event.xlsx` 中抽取活动信息，合并成统一的 `activities` 数据，再同时提供给网页前端、SeaTalk 机器人推送、图片海报渲染和 Alpha Knowledge 知识库同步。
+
+当前线上版本已不是最早的“单一 Sheet 实时同步网页”形态，项目的真实能力和部署方式以本文档与代码为准。
+
+## 当前能力
+
+- 聚合多份 Google Sheets 活动数据
+- 解析第二份表中的甘特排期与奖励配置
+- 读取 `Event.xlsx`，补齐活动类型、Event ID 和期别
+- 输出统一的 `/api/calendar` 活动接口
+- 前端展示进行中活动、月历、侧栏、泳道时间线、活动卡片
+- 支持网页端手动上传最新 `Event.xlsx`
+- 通过 Socket.io 在数据变更后通知前端刷新
+- 支持 SeaTalk 私聊回复、群消息推送、群图片推送
+- 可将活动数据同步到 Alpha Knowledge
+- 支持通过 Cloudflare Worker 代理 Google API 请求
+- 支持通过 GitHub webhook 在服务器上自动拉取并重启服务
 
 ## 技术栈
 
-- **后端** — Node.js + Express + Socket.io
-- **前端** — 原生 HTML / CSS / JS + Socket.io 客户端
-- **Google API 认证** — OAuth2（个人 Google 账号）
-- **实时机制** — 后端轮询 + WebSocket 推送
+- 后端：Node.js + Express + Socket.io
+- 数据源：Google Sheets API + 本地/服务器 `Event.xlsx`
+- 前端：原生 HTML / CSS / JavaScript
+- 文件上传：Multer
+- 图片渲染：Puppeteer / Chromium
+- 第三方集成：SeaTalk、Alpha Knowledge、Cloudflare Worker
 
-## 项目结构
+## 关键目录
 
-```
-├── server.js           # Node.js 后端主文件
-├── auth.js             # 一次性 OAuth2 授权脚本
-├── package.json        # 依赖管理
-├── .env                # 环境变量（不提交到 Git）
-├── .env.example        # 环境变量模板
-└── public/
-    ├── index.html      # 前端页面
-    ├── style.css       # 样式
-    └── app.js          # 前端逻辑
-```
-
-## 设置步骤
-
-### 第 1 步：创建 Google Cloud 项目并启用 API
-
-1. 前往 [Google Cloud Console](https://console.cloud.google.com/) 创建一个新项目（或使用已有项目）。
-2. 在左侧菜单找到 **API 和服务 → 库**，搜索并启用 **Google Sheets API**。
-
-### 第 2 步：创建 OAuth2 凭据
-
-1. 进入 **API 和服务 → 凭据**，点击 **创建凭据 → OAuth 客户端 ID**。
-2. 如果提示需要配置同意屏幕，先完成配置：
-   - 选择 **外部** 用户类型。
-   - 填写应用名称和你的邮箱。
-   - 在 **范围 (Scopes)** 页面可以跳过（auth.js 会自动请求所需范围）。
-   - 在 **测试用户** 页面，添加你自己的 Google 邮箱地址。
-   - 完成同意屏幕配置后，回到凭据页面继续创建。
-3. 应用类型选择 **Web 应用**。
-4. 在 **已获授权的重定向 URI** 中添加：`http://localhost:3001/oauth2callback`
-5. 创建完成后，复制 **客户端 ID** 和 **客户端密钥**。
-
-### 第 3 步：配置环境变量
-
-复制 `.env.example` 为 `.env`：
-
-```bash
-cp .env.example .env
+```text
+.
+├── server.js                     # 服务主入口，整合 API、轮询、推送、上传、部署回调
+├── parser.js                     # Google Sheets / 甘特 / 配置表活动解析核心
+├── excel-reader.js               # Event.xlsx 读取与类型映射
+├── seatalk-bot.js                # SeaTalk 鉴权、消息发送、摘要生成、定时推送
+├── alpha-knowledge-sync.js       # Alpha Knowledge Markdown 同步
+├── auth.js                       # 获取 GOOGLE_REFRESH_TOKEN 的一次性授权脚本
+├── public/
+│   ├── index.html                # 页面骨架与更新日志
+│   ├── app.js                    # 页面逻辑与交互
+│   └── style.css                 # 主题与样式
+├── scripts/
+│   ├── send-group-calendar-image-push.js
+│   ├── render-calendar-image-html.js
+│   └── render-calendar-image.py  # 旧版渲染器，当前主链路已改为 HTML/Puppeteer
+├── cloudflare-worker/            # Google API 代理 Worker（可选）
+├── data/                         # 活动快照、上传目录、Event.xlsx 等运行时数据
+├── README.md
+├── SETUP.md
+└── .env.example
 ```
 
-填入刚才获取的值：
+## 核心数据流
 
-```
-GOOGLE_CLIENT_ID=你的客户端ID
-GOOGLE_CLIENT_SECRET=你的客户端密钥
-GOOGLE_SHEET_ID=你的Sheet_ID
-```
+1. `server.js` 启动后使用 OAuth2 refresh token 访问 Google Sheets API。
+2. 主表 `GOOGLE_SHEET_ID` 提供活动基础数据。
+3. 第二份表 `GOOGLE_SHEET_ID_2` 中的 `1.0 event calendar` 与 `活动配置` 补充排期和奖励。
+4. `excel-reader.js` 从 `Event.xlsx` 读取 Event 配置和活动类型。
+5. `parser.js` 与 `buildTypedActivities()` 将多路数据合并、去重、别名归并、补期别、补类型、做少量人工修正。
+6. 统一结果通过 `/api/calendar` 暴露给网页、SeaTalk、图片推送与 Alpha Knowledge。
+7. 数据变更后通过 `sheet:update` 事件通知前端重新拉取。
 
-> **获取 Sheet ID**：打开 Google Sheet，地址栏 URL 中 `/d/` 和 `/edit` 之间的字符串就是 Sheet ID。
+## 统一活动模型
 
-### 第 4 步：安装依赖
+`/api/calendar` 返回的每项活动大致包含：
 
-```bash
-npm install
-```
-
-### 第 5 步：运行授权脚本获取 Refresh Token
-
-```bash
-node auth.js
-```
-
-浏览器会自动打开 Google 登录页面。用你的 Google 账号登录并授权后，终端会输出一个 `GOOGLE_REFRESH_TOKEN=...`。将这行复制到 `.env` 文件中。
-
-> 此步骤只需执行一次。Refresh token 长期有效，除非你手动撤销授权。
-
-### 第 6 步：启动服务
-
-```bash
-npm start
+```json
+{
+  "name": "活动名",
+  "source": "来源 sheet",
+  "category": "分类（可选）",
+  "startDate": "2026-04-01",
+  "endDate": "2026-04-14",
+  "eventId": 12345,
+  "excelName": "Event 表名称",
+  "types": ["任务活动", "网页活动"],
+  "rewards": [
+    { "name": "奖励名称", "itemId": "10001" }
+  ]
+}
 ```
 
-在浏览器中打开 `http://localhost:3000` 即可看到实时同步的 Google Sheet 数据。
+## 快速开始
 
-## 环境变量说明
+完整初始化请看 [SETUP.md](./SETUP.md)。
 
-| 变量名 | 说明 | 示例 |
+最短流程如下：
+
+1. 安装依赖：`npm install`
+2. 复制环境变量模板：`copy .env.example .env`
+3. 配置 Google OAuth 与 Sheet ID
+4. 运行 `node auth.js` 获取 `GOOGLE_REFRESH_TOKEN`
+5. 准备 `Event.xlsx`（可选但推荐）
+6. 启动：`npm start`
+7. 打开 `http://localhost:3000`
+
+## 当前 API
+
+| 路径 | 方法 | 说明 |
 |---|---|---|
-| `GOOGLE_CLIENT_ID` | OAuth2 客户端 ID | `123456.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | OAuth2 客户端密钥 | `GOCSPX-xxxxx` |
-| `GOOGLE_REFRESH_TOKEN` | 授权后获取的刷新令牌 | （运行 `node auth.js` 获取） |
-| `GOOGLE_SHEET_ID` | Google Sheet 的 ID | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms` |
-| `SHEET_RANGE` | 要读取的工作表范围 | `Sheet1` 或 `Sheet1!A1:D100` |
-| `POLL_INTERVAL` | 轮询间隔（毫秒） | `5000`（即 5 秒） |
-| `PORT` | 服务器端口 | `3000` |
+| `/api/data` | `GET` | 返回原始 Google Sheets 缓存 |
+| `/api/calendar` | `GET` | 返回合并后的统一活动数据 |
+| `/api/event-upload` | `POST` | 上传 `Event.xlsx`，字段名为 `eventFile` |
+| `/callback` | `POST` | SeaTalk 机器人回调入口 |
+| `/api/seatalk-push` | `POST` | 触发文字版群推送，需 `x-internal-key` |
+| `/api/seatalk-image-push` | `POST` | 触发图片版群推送，需 `x-internal-key` |
+| `/api/deploy` | `POST` | GitHub webhook 自动部署入口 |
 
-## 工作原理
+说明：
 
-1. 服务启动时，使用 OAuth2 refresh token 认证访问 Google Sheets API，拉取初始数据。
-2. 之后每隔 `POLL_INTERVAL` 毫秒重新读取 Sheet 数据，与缓存进行对比。
-3. 检测到数据变化时，通过 Socket.io（WebSocket）将新数据推送给所有已连接的客户端。
-4. 前端收到更新后，重新渲染表格，变化的单元格会有高亮闪烁动画。
+- `/api/seatalk-push` 和 `/api/seatalk-image-push` 会校验请求头 `x-internal-key`，其值需等于 `SEATALK_SIGNING_SECRET`。
+- `/api/deploy` 会校验 GitHub `x-hub-signature-256`，其签名密钥来自 `DEPLOY_SECRET`。
 
-## API
+## 前端说明
 
-| 端点 | 方法 | 说明 |
-|---|---|---|
-| `/api/data` | GET | 返回当前缓存的 Sheet 数据 |
+前端不是独立业务层，而是 `/api/calendar` 的多视图展示层，主要包括：
 
-## WebSocket 事件
+- 顶部“正在进行”横向卡片
+- 类型筛选栏
+- 迷你月历
+- 日期侧栏
+- 按活动类型分组的泳道时间线
+- 本月活动详情卡片
+- 配置检查页中的 `Event.xlsx` 手动上传入口
 
-| 事件名 | 方向 | 说明 |
-|---|---|---|
-| `sheet:update` | 服务端 → 客户端 | 推送最新的 Sheet 数据（二维数组） |
+## 环境变量
 
-## 注意事项
+请以 [`.env.example`](./.env.example) 为准。这里列出最常用的一组：
 
-- `.env` 中包含敏感的 OAuth2 凭据，**不要提交到 Git**（已在 `.gitignore` 中排除）。
-- Google Sheets API 有[配额限制](https://developers.google.com/sheets/api/limits)，默认每分钟 60 次读取请求。轮询间隔设为 5 秒（每分钟 12 次）留有充足余量。
-- 如需读取多个工作表或特定范围，修改 `.env` 中的 `SHEET_RANGE`，例如 `Sheet1!A1:F50`。
-- 如果应用处于 Google Cloud 的"测试"模式，refresh token 可能在 7 天后过期。将应用发布（或设为内部应用）可使 token 长期有效。
+### 必填
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REFRESH_TOKEN`
+- `GOOGLE_SHEET_ID`
+
+### 常用可选
+
+- `GOOGLE_SHEET_ID_2`
+- `EVENT_EXCEL_PATH`
+- `PORT`
+- `POLL_INTERVAL`
+- `CALENDAR_PUBLIC_URL`
+
+### SeaTalk
+
+- `SEATALK_APP_ID`
+- `SEATALK_APP_SECRET`
+- `SEATALK_SIGNING_SECRET`
+- `SEATALK_GROUP_ID`
+- `PUSH_HOLIDAYS`
+- `PUSH_MAKEUP_WORKDAYS`
+
+### Alpha Knowledge
+
+- `ALPHA_KNOWLEDGE_API_KEY`
+- `ALPHA_KNOWLEDGE_EXPERT_ID`
+- `ALPHA_KNOWLEDGE_CITATION_URL`
+
+### 代理与渲染
+
+- `GOOGLE_API_PROXY`
+- `GOOGLE_API_PROXY_KEY`
+- `CALENDAR_IMAGE_OUTPUT_PATH`
+- `CALENDAR_IMAGE_API_URL`
+- `PUPPETEER_EXECUTABLE_PATH`
+- `HTTPS_PROXY` / `HTTP_PROXY`
+
+### 部署
+
+- `DEPLOY_SECRET`
+
+## 服务器同步与发布
+
+这个项目当前就是要同步到服务器上的，代码里已经保留了两种链路。
+
+### 推荐链路：GitHub -> 服务器自动部署
+
+当前仓库已连接 GitHub 远端。服务端的 `/api/deploy` webhook 在收到 GitHub `push` 事件后，会在服务器上执行：
+
+1. `git pull origin master`
+2. `npm install --production`
+3. `pm2 restart gng-activity-calendar`
+
+这条链路适合正式更新，也是最推荐的同步方式。
+
+### 备用链路：本地直传服务器
+
+项目中存在本地辅助脚本：
+
+- `upload.js`：通过 SFTP 上传项目文件到服务器
+- `deploy.js`：在服务器上执行命令
+
+它们已被 `.gitignore` 忽略，属于本地/运维脚本，不是共享仓库的一部分。若继续使用这条链路，请只在可信机器上维护，并自行管理其中的敏感配置。
+
+### 当前服务器约定
+
+- 线上目录：`/opt/gng-activity-calendar`
+- 进程名：`gng-activity-calendar`
+- 服务器上的 `Event.xlsx` 默认路径通常应为：
+  `/opt/gng-activity-calendar/data/Event.xlsx`
+
+## Cloudflare Worker（可选）
+
+`cloudflare-worker/` 是一个可选的 Google API 代理，用于受限网络场景。
+
+大致流程：
+
+1. 进入 `cloudflare-worker/`
+2. 配置 Wrangler
+3. 设置 `PROXY_KEY`
+4. 部署 Worker
+5. 在主项目 `.env` 中配置：
+   - `GOOGLE_API_PROXY`
+   - `GOOGLE_API_PROXY_KEY`
+
+## 维护注意事项
+
+- `POLL_INTERVAL` 在代码中有最小值保护，实际不会低于 `30000` 毫秒。
+- 当前 `Event.xlsx` 已改为手动上传同步，不再自动监听本地文件变更。
+- SeaTalk 每日定时推送代码目前在 `server.js` 中被注释暂停，恢复前请先确认业务需要。
+- 活动解析依赖较多业务规则和别名匹配，调整 Sheet 结构时要重点检查 `parser.js`。
+- 第二份表的甘特解析包含固定行号与年度假设，跨新年度时需要重点复核。
+
+## 文档说明
+
+- [SETUP.md](./SETUP.md)：初始化与环境配置
+- [README.md](./README.md)：项目总览、能力与部署链路
+
+如果文档与代码不一致，以代码实现为准，并优先补正文档。
