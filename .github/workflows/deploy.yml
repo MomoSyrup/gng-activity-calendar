@@ -61,6 +61,7 @@ jobs:
         run: |
           set -Eeuo pipefail
 
+          BUNDLE_PATH="${RUNNER_TEMP}/gng-activity-calendar-release.tgz"
           tar \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -70,7 +71,9 @@ jobs:
             --exclude='ngrok' \
             --exclude='deploy.js' \
             --exclude='upload.js' \
-            -czf release.tgz .
+            -czf "${BUNDLE_PATH}" .
+
+          echo "BUNDLE_PATH=${BUNDLE_PATH}" >> "$GITHUB_ENV"
 
       - name: Upload Release Bundle
         shell: bash
@@ -78,7 +81,7 @@ jobs:
           set -Eeuo pipefail
 
           scp -i ~/.ssh/id_ed25519 -P "${SERVER_PORT}" \
-            release.tgz \
+            "${BUNDLE_PATH}" \
             "${SERVER_USER}@${SERVER_HOST}:/tmp/gng-activity-calendar-release.tgz"
 
       - name: Run Remote Deploy Script
