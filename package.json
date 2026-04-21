@@ -1,6 +1,6 @@
 {
   "name": "gng-activity-calendar",
-  "version": "0.3.25",
+  "version": "0.3.29",
   "description": "GNG 游戏活动日历 - 实时同步 Google Sheets 数据，支持 AI 知识库集成",
   "main": "server.js",
   "scripts": {

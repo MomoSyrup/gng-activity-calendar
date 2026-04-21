@@ -7,3 +7,5 @@ auto-sync.bat
 data/
 public/calendar-preview.html
 public/timeline-preview.html
+output/
+.playwright-cli/

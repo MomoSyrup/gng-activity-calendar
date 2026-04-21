@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GNG活动日历</title>
+  <title>GNG 活动日历</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="style.css" />
   <script>
-    (function() {
-      var t = localStorage.getItem('gng-theme');
-      if (t) document.documentElement.setAttribute('data-theme', t);
+    (function () {
+      var theme = localStorage.getItem('gng-theme');
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
     })();
   </script>
 </head>
@@ -27,7 +28,7 @@
           <span class="dot"></span>
           <span class="label">连接中…</span>
         </div>
-        <button class="version-tag header-version" id="version-btn">v0.3.25</button>
+        <button class="version-tag header-version" id="version-btn">v0.3.29</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -35,9 +36,67 @@
     <nav class="tabs" id="tabs"></nav>
 
     <main>
+      <section class="health-strip" id="health-strip"></section>
+      <section class="change-banner" id="change-banner"></section>
+
+      <section class="command-bar">
+        <div class="command-search">
+          <label class="command-field command-field-search" for="filter-search">
+            <span>搜索</span>
+            <input id="filter-search" type="search" placeholder="活动名 / 来源 / Event ID / 奖励名" />
+          </label>
+        </div>
+        <div class="command-select-grid">
+          <label class="command-field" for="filter-status">
+            <span>状态</span>
+            <select id="filter-status">
+              <option value="all">全部状态</option>
+              <option value="active">进行中</option>
+              <option value="upcoming">即将开始</option>
+              <option value="ended">已结束</option>
+              <option value="undated">未排期</option>
+            </select>
+          </label>
+          <label class="command-field" for="filter-source">
+            <span>来源</span>
+            <select id="filter-source">
+              <option value="all">全部来源</option>
+            </select>
+          </label>
+          <label class="command-field" for="filter-rewards">
+            <span>奖励</span>
+            <select id="filter-rewards">
+              <option value="all">全部奖励状态</option>
+              <option value="has">仅看有奖励</option>
+              <option value="missing">仅看无奖励</option>
+            </select>
+          </label>
+          <label class="command-field" for="filter-anomaly">
+            <span>异常</span>
+            <select id="filter-anomaly">
+              <option value="all">全部异常状态</option>
+              <option value="only">仅看异常</option>
+              <option value="unconfigured">未配置类型</option>
+              <option value="missing_event">未绑定 Event</option>
+              <option value="missing_start">缺少开始日期</option>
+              <option value="missing_end">缺少结束日期</option>
+              <option value="missing_rewards">无奖励配置</option>
+            </select>
+          </label>
+        </div>
+        <div class="command-actions">
+          <button class="command-secondary" id="copy-filter-summary" type="button">复制当前摘要</button>
+          <button class="command-reset" id="filter-reset" type="button">重置筛选</button>
+          <div class="command-result" id="filter-result"></div>
+        </div>
+      </section>
+
+      <section class="quick-view-bar" id="quick-view-bar"></section>
+      <div class="type-filter-bar" id="type-filter-bar"></div>
+
       <div class="calendar-view" id="calendar-view">
+        <div class="favorites-strip" id="favorites-strip"></div>
         <div class="active-now-section" id="active-now"></div>
-        <div class="type-filter-bar" id="type-filter-bar"></div>
         <div class="calendar-header">
           <button class="cal-nav" id="cal-prev">&lt;</button>
           <h2 class="cal-title" id="cal-title"></h2>
@@ -49,11 +108,33 @@
         <div class="activity-detail" id="activity-detail"></div>
       </div>
 
+      <div class="upcoming-view" id="upcoming-view" style="display:none">
+        <div class="upcoming-hero" id="upcoming-hero"></div>
+        <div class="range-filter-bar" id="upcoming-range-bar"></div>
+        <div class="upcoming-groups" id="upcoming-groups"></div>
+      </div>
+
+      <div class="operations-view" id="operations-view" style="display:none">
+        <div class="operations-hero-grid" id="operations-hero-grid"></div>
+
+        <div class="operations-main-grid">
+          <section class="operations-panel" id="operations-pace"></section>
+          <section class="operations-panel" id="operations-coverage"></section>
+        </div>
+
+        <div class="operations-main-grid">
+          <section class="operations-panel" id="operations-type-breakdown"></section>
+          <section class="operations-panel" id="operations-source-breakdown"></section>
+        </div>
+
+        <section class="operations-panel operations-summary-panel" id="operations-summary"></section>
+      </div>
+
       <div class="config-check-view" id="config-check-view" style="display:none">
-        <div class="event-upload-panel">
+        <div class="event-upload-panel event-upload-panel-priority">
           <h3>Event 表手动同步</h3>
           <p class="event-upload-desc">
-            已取消 Event 表自动同步。请在此手动上传最新 <code>Event.xlsx</code>，系统会立即刷新活动分类并同步到日历展示。
+            手动上传入口已经前置到这里了。你切到“数据巡检”后第一屏就能直接上传 <code>Event.xlsx</code>，不用再滚到页面底部。
           </p>
           <form id="event-upload-form" class="event-upload-form">
             <input id="event-file-input" type="file" accept=".xlsx" />
@@ -61,6 +142,13 @@
           </form>
           <p id="event-upload-status" class="upload-status"></p>
         </div>
+
+        <div class="ops-grid">
+          <section class="ops-panel" id="ops-health"></section>
+          <section class="ops-panel" id="ops-anomaly-summary"></section>
+        </div>
+
+        <section class="ops-panel ops-list-panel" id="ops-anomaly-list"></section>
       </div>
     </main>
 
@@ -76,6 +164,52 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.29</span>
+            <span class="changelog-date">2026-04-21</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增快捷视图、URL 状态记忆、活动收藏和详情抽屉，浏览与回到同一视图更顺手</li>
+            <li>新增完整“运营视角”页签，集中展示活动规模、节奏、覆盖率、来源分布和运营摘要</li>
+            <li>新增数据刷新变更提示、高亮标记和复制摘要能力，方便追踪最新变化与同步信息</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.28</span>
+            <span class="changelog-date">2026-04-21</span>
+          </div>
+          <ul class="changelog-list">
+            <li>收紧顶部数据健康状态条的间距和层级，让首屏更轻、更紧凑</li>
+            <li>健康卡片改为更细的高亮条和更小的信息密度，减少对筛选区与主内容的视觉压迫</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.27</span>
+            <span class="changelog-date">2026-04-21</span>
+          </div>
+          <ul class="changelog-list">
+            <li>将“数据巡检”页中的 Event 手动上传入口前置到首屏顶部，切页后无需再滚动到底部查找</li>
+            <li>同步强化上传卡片的提示文案和视觉强调，上传动作仍沿用原有逻辑与接口</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.26</span>
+            <span class="changelog-date">2026-04-21</span>
+          </div>
+          <ul class="changelog-list">
+            <li>新增全局搜索和多条件筛选，可按状态、来源、奖励配置和异常类型快速定位活动</li>
+            <li>新增“即将开始”页签，按未来 7 / 14 / 30 天聚合活动并支持一键定位到日历</li>
+            <li>新增顶部健康状态条，直接展示 `/healthz` 与 `/readyz` 的就绪、轮询、快照和版本信息</li>
+            <li>新增“数据巡检”页签，集中展示未配置类型、未绑定 Event、缺少日期和无奖励配置的待处理活动</li>
+          </ul>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-version">
@@ -83,10 +217,9 @@
             <span class="changelog-date">2026-04-17</span>
           </div>
           <ul class="changelog-list">
-            <li>移除服务端旧的 `/api/deploy` webhook 部署入口，统一切换为 GitHub Actions 自动部署链路</li>
-            <li>新增 `/healthz` 与 `/readyz` 健康检查接口，补充运行时状态与初始化可用性判断</li>
-            <li>增加环境变量校验、共享活动期别逻辑、语法检查与单元测试，并让部署前自动执行 `npm run check`</li>
-            <li>甘特年份推断和人工修正规则改为集中配置，前端 Event 上传逻辑也拆成独立模块</li>
+            <li>服务端移除旧的 `/api/deploy` 部署入口，统一切换到 GitHub Actions 自动部署</li>
+            <li>新增 `/healthz` 与 `/readyz` 健康检查接口，并补齐环境变量校验与测试链路</li>
+            <li>活动期别逻辑、人工修正规则和 Event 上传流程完成配置化与模块化整理</li>
           </ul>
         </div>
 
@@ -96,7 +229,7 @@
             <span class="changelog-date">2026-04-13</span>
           </div>
           <ul class="changelog-list">
-            <li>暂停 SeaTalk 每日定时推送（当前无活动），待后续恢复</li>
+            <li>暂停 SeaTalk 每日定时推送，等待后续活动恢复后重新启用</li>
           </ul>
         </div>
 
@@ -106,10 +239,8 @@
             <span class="changelog-date">2026-04-07</span>
           </div>
           <ul class="changelog-list">
-            <li>修复节假日推送：添加 PUSH_HOLIDAYS / PUSH_MAKEUP_WORKDAYS 配置，避免法定假日误发推送</li>
-            <li>推送渲染器切换至 HTML/Puppeteer，替代旧 Python 渲染器</li>
-            <li>新增 /api/seatalk-image-push 接口，支持指定群组触发图片推送</li>
-            <li>推送同时发送日历图片和网页链接</li>
+            <li>修复节假日推送规则，新增法定假日与调休工作日配置</li>
+            <li>图片推送渲染切换到 HTML + Puppeteer，并增加指定群图片推送接口</li>
           </ul>
         </div>
 
@@ -119,12 +250,8 @@
             <span class="changelog-date">2026-04-03</span>
           </div>
           <ul class="changelog-list">
-            <li>推送图片全面优化：活动行改用 CSS Grid 确保标签/日期/徽章跨行对齐</li>
-            <li>活动分类直接读取 API 类型字段（任务/兑换/网页/抽奖），颜色与左侧彩条联动</li>
-            <li>今日栏改为四格横排 HUD 信息条，显示进行中数量、即将开始数量、4:00 重置提示</li>
-            <li>今日已关活动（凌晨4点过期）显示"今日已关"灰色徽章，避免误导</li>
-            <li>背景人物去底改用 BFS 洪水填充，精确去除图片黑底不损伤角色本体</li>
-            <li>背景图对齐改为顶部对齐，地图纹理全程覆盖</li>
+            <li>推送海报继续优化，统一活动标签、日期和状态展示</li>
+            <li>网页首页新增进行中 HUD、主题细节和活动视觉强化</li>
           </ul>
         </div>
 
@@ -134,299 +261,24 @@
             <span class="changelog-date">2026-03-24</span>
           </div>
           <ul class="changelog-list">
-            <li>SeaTalk 推送图片改用 Puppeteer 无头浏览器渲染，视觉质量提升至网页级别</li>
-            <li>全新 HTML/CSS 设计：毛玻璃面板、渐变、阴影、CJK 字体清晰渲染</li>
-            <li>倒计时徽章样式保留，活动卡片左侧彩色竖条区分状态</li>
-            <li>移除 Python/PIL 渲染依赖，推送链路改为纯 Node.js</li>
+            <li>SeaTalk 图片推送升级为 Puppeteer 渲染，网页视觉语言同步重做</li>
+            <li>移除旧的 Python 图片渲染依赖，推送链路统一到 Node.js</li>
           </ul>
         </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.20</span>
-            <span class="changelog-date">2026-03-24</span>
-          </div>
-          <ul class="changelog-list">
-            <li>SeaTalk 推送日历图片全面美化：标题两侧添加装饰横线与菱形点缀</li>
-            <li>活动卡片左侧加彩色竖条（正在进行绿色，即将开始蓝色）</li>
-            <li>倒计时改为彩色圆角徽章（紧急红、临近黄、充裕绿/蓝）</li>
-            <li>分区标题前加彩色方块前缀，视觉层次更清晰</li>
-            <li>日历格今日高亮加白色外框，事件指示圆点放大加强</li>
-            <li>底部链接栏加 ↗ 符号，提示可跳转网页</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.19</span>
-            <span class="changelog-date">2026-04-02</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复每日 SeaTalk 图片推送死锁问题（spawnSync 阻塞事件循环导致 Python 脚本无法获取数据）</li>
-            <li>改用异步 execFile 执行图片渲染子进程，推送不再超时</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.18</span>
-            <span class="changelog-date">2026-03-31</span>
-          </div>
-          <ul class="changelog-list">
-            <li>版本号按钮调整到右上状态区（连接状态旁），信息层级更清晰</li>
-            <li>保持版本号点击后弹出更新日志的交互不变</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.17</span>
-            <span class="changelog-date">2026-03-31</span>
-          </div>
-          <ul class="changelog-list">
-            <li>网页版本号按钮移至顶部标题栏，和状态栏同一行展示</li>
-            <li>保留点击版本号查看更新日志的交互能力</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.16</span>
-            <span class="changelog-date">2026-03-31</span>
-          </div>
-          <ul class="changelog-list">
-            <li>SeaTalk 定时自动推送切换为图片版，按工作日规则在 10:30 发送日历海报</li>
-            <li>关闭自动文字版日推，避免与图片推送重复触达</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.15</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>优化 SeaTalk 推送版式：新增分段、编号与时间行，提升可读性</li>
-            <li>推送内容新增活动期别显示（第N期），与网页期别逻辑保持一致</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.14</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复期别显示不一致：正在进行、侧栏、时间线、活动卡片统一使用全量活动期别编号</li>
-            <li>修复同一活动在顶部显示“第29期”而下方显示“第5期”的问题</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.13</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>同名多期活动新增“第N期”展示（时间线、侧栏、活动卡片、进行中模块同步显示）</li>
-            <li>优化同名活动定位逻辑，点击侧栏可准确跳转对应期别卡片</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.12</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复快照兜底路径未应用时间修正的问题：Google 超时时也会同步修正“赛季组队冲刺网页活动”结束时间</li>
-            <li>确保线上在接口异常场景下仍显示 3/26-4/14，而不是回退到 4/8</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.11</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修正“赛季组队冲刺网页活动”时间范围：将 3/26 档期结束时间从 4/8 调整为 4/14</li>
-            <li>优化网页活动时间修正规则，避免该活动显示周期偏短</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.10</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增无效活动过滤：移除“网页排位冲刺活动”占位条目，不再在页面展示</li>
-            <li>配合名称强匹配规则，避免误绑与无效网页活动同时出现</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.9</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复 Event 误匹配：取消仅按日期接近的绑定逻辑，改为必须名称命中后才允许绑定</li>
-            <li>修复“网页排位冲刺活动”被错误绑定为周末补给的问题，避免出现无效活动条目</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.8</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复多期拆分去重逻辑，避免单期主数据覆盖 Event 表多期区间</li>
-            <li>进一步修复 99 兑换商店展示，确保可按 Event 表看到完整五期数据</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.7</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>优化 Event 多期匹配逻辑：主数据仅一条时可按 Event 表强匹配拆分为多期展示</li>
-            <li>修复 99 兑换商店仅显示一期的问题，支持在页面中查看 Event 表中的多期区间</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.6</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>取消 Event 表自动监听与定时重载，改为网页端手动上传 Event.xlsx 触发同步</li>
-            <li>配置页新增 Event 上传入口与操作说明，上传成功后即时刷新活动分类与页面数据</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.5</span>
-            <span class="changelog-date">2026-03-30</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增活动数据快照兜底机制，服务重启遇到 Google 限流时仍可展示上一次有效活动内容</li>
-            <li>轮询间隔增加最小 30 秒保护，避免环境变量过小导致配额触发后页面内容空白</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.4</span>
-            <span class="changelog-date">2026-03-24</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增 Event.xlsx 实时监听，表格文件更新后自动重载活动分类并立即刷新页面数据</li>
-            <li>新增 Excel 文件重载后的前端推送与 AI 同步触发，减少手动重启与等待时间</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.3</span>
-            <span class="changelog-date">2026-03-24</span>
-          </div>
-          <ul class="changelog-list">
-            <li>修复服务器端 Google Sheets 限流时页面活动模块缺失的问题，读取失败不再覆盖上次有效配置数据</li>
-            <li>将默认数据轮询间隔调整为 30 秒，降低限流触发概率并提升服务器与本地页面一致性</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.3.2</span>
-            <span class="changelog-date">2026-03-24</span>
-          </div>
-          <ul class="changelog-list">
-            <li>SeaTalk 群推送规则升级为工作日且非法定节假日 10:30，补班日按工作日正常推送</li>
-            <li>完成新代码与服务器同步，首页版本号和部署版本保持一致</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.2.2</span>
-            <span class="changelog-date">2026-03-16</span>
-          </div>
-          <ul class="changelog-list">
-            <li>重做第二主题：从浅色改为暖色暗黑风（赤陶/金），双主题均暗色调更契合游戏世界观</li>
-            <li>主题切换图标改为✨星辉/☾月牙，取消违和的太阳图标</li>
-            <li>调整第二主题背景叠加透明度与角色装饰可见度</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.2.1</span>
-            <span class="changelog-date">2026-03-16</span>
-          </div>
-          <ul class="changelog-list">
-            <li>全新游戏主题背景：地图场景全屏背景 + 角色装饰</li>
-            <li>配色从紫靛色系重构为暗红/金色系暗黑奇幻风格</li>
-            <li>暗/浅色双主题均适配新配色方案</li>
-            <li>移动端自适应：小屏幕自动隐藏角色装饰</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.2.0</span>
-            <span class="changelog-date">2026-03-16</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增 Alpha Knowledge (URU) AI 机器人数据自动同步</li>
-            <li>活动数据变更时自动生成 Markdown 知识文档并推送至 AI 平台</li>
-            <li>每30分钟定期刷新同步，确保「今日」相关数据实时准确</li>
-            <li>支持增量更新：内容未变化时自动跳过上传</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.1.2</span>
-            <span class="changelog-date">2026-03-16</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增版本号点击查看更新日志功能</li>
-            <li>后续每次更新将自动记录更新日志</li>
-          </ul>
-        </div>
-
-        <div class="changelog-entry">
-          <div class="changelog-version">
-            <span class="changelog-ver-tag">v0.1.1</span>
-            <span class="changelog-date">2026-03-16</span>
-          </div>
-          <ul class="changelog-list">
-            <li>新增「正在进行」模块，顶部展示当前进行中的活动（排除未配置），含剩余天数和进度条</li>
-            <li>日历改为迷你日历 + 侧边详情栏布局，点击日期在右侧显示当日活动列表</li>
-            <li>时间线从甘特图改为泳道式时间轴，按活动类型分组，圆角胶囊进度条</li>
-            <li>修复泳道时间条内文字与背景同色导致不可见的问题</li>
-            <li>全面重写 UI：暗/浅色双主题切换、毛玻璃效果、渐变标题动画</li>
-            <li>筛选栏改为胶囊按钮 + 数量计数徽章</li>
-            <li>活动卡片增加毛玻璃效果和悬停渐变边框动画</li>
-            <li>引入 Noto Sans SC 字体、自定义滚动条、全局平滑过渡</li>
-            <li>新增版本号显示</li>
-          </ul>
-        </div>
-
       </div>
     </div>
   </div>
 
+  <div class="activity-drawer-overlay" id="activity-drawer-overlay">
+    <aside class="activity-drawer" id="activity-drawer" aria-hidden="true">
+      <button class="activity-drawer-close" id="activity-drawer-close" type="button" aria-label="关闭详情">&times;</button>
+      <div class="activity-drawer-content" id="activity-drawer-content"></div>
+    </aside>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="/shared/activity-display.js"></script>
+  <script src="/shared/activity-insights.js"></script>
   <script src="js/event-upload.js"></script>
   <script src="app.js"></script>
 </body>
