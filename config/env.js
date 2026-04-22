@@ -39,6 +39,22 @@ function readInteger(source, name, options) {
   return parsed;
 }
 
+function readBoolean(source, name, options) {
+  const settings = options || {};
+  const raw = source[name];
+  if (!hasValue(raw)) {
+    if (settings.required) {
+      throw new Error(`Missing required environment variable: ${name}`);
+    }
+    return settings.defaultValue === undefined ? false : settings.defaultValue;
+  }
+
+  const normalized = String(raw).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  throw new Error(`Environment variable ${name} must be a boolean`);
+}
+
 function validateCompleteFeature(source, featureName, variables, errors) {
   const present = variables.filter((name) => hasValue(source[name]));
   if (present.length > 0 && present.length !== variables.length) {
@@ -79,6 +95,15 @@ function validateEnv(source) {
       ALPHA_KNOWLEDGE_EXPERT_ID: readString(source, 'ALPHA_KNOWLEDGE_EXPERT_ID', { defaultValue: '7420' }),
       ALPHA_KNOWLEDGE_CITATION_URL: readString(source, 'ALPHA_KNOWLEDGE_CITATION_URL'),
       PUPPETEER_EXECUTABLE_PATH: readString(source, 'PUPPETEER_EXECUTABLE_PATH'),
+      GOOGLE_LOGIN_ENABLED: readBoolean(source, 'GOOGLE_LOGIN_ENABLED', { defaultValue: false }),
+      GOOGLE_LOGIN_CLIENT_ID: readString(source, 'GOOGLE_LOGIN_CLIENT_ID', {
+        defaultValue: hasValue(source.GOOGLE_CLIENT_ID) ? String(source.GOOGLE_CLIENT_ID).trim() : '',
+      }),
+      GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS: readString(source, 'GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS', {
+        defaultValue: 'garena.com,garena-external.com',
+      }),
+      APP_SESSION_TTL_HOURS: readInteger(source, 'APP_SESSION_TTL_HOURS', { defaultValue: 24, min: 1, max: 24 * 30 }),
+      APP_SESSION_SECRET: readString(source, 'APP_SESSION_SECRET'),
     };
   } catch (error) {
     errors.push(error.message);
@@ -108,6 +133,18 @@ function validateEnv(source) {
     !hasValue(source.ALPHA_KNOWLEDGE_API_KEY)
   ) {
     warnings.push('Alpha Knowledge metadata is configured without ALPHA_KNOWLEDGE_API_KEY; sync is currently disabled.');
+  }
+
+  if (env && env.GOOGLE_LOGIN_ENABLED) {
+    validateCompleteFeature(
+      source,
+      'Google login',
+      [
+        'GOOGLE_LOGIN_CLIENT_ID',
+        'APP_SESSION_SECRET',
+      ],
+      errors
+    );
   }
 
   if (errors.length > 0) {

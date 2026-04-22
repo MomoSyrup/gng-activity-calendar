@@ -37,3 +37,14 @@ test('validateEnv warns when a Google proxy key is missing', () => {
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /GOOGLE_API_PROXY_KEY/);
 });
+
+test('validateEnv rejects partial Google login configuration when enabled', () => {
+  assert.throws(
+    () => validateEnv({
+      ...createBaseEnv(),
+      GOOGLE_LOGIN_ENABLED: 'true',
+      GOOGLE_LOGIN_CLIENT_ID: 'google-login-client',
+    }),
+    /Google login requires/
+  );
+});

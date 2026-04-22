@@ -166,6 +166,7 @@ http://localhost:3000
 - `/api/calendar` 是否返回活动数组
 - 上传 `Event.xlsx` 后页面是否刷新
 - 控制台是否出现 Google Sheets 拉取成功日志
+- 如果启用了 Google 企业邮箱登录，首页是否先显示登录卡片，登录成功后是否自动恢复到原页面
 
 可直接访问：
 
@@ -218,7 +219,35 @@ ALPHA_KNOWLEDGE_CITATION_URL=
 
 配置完成后，服务会在活动数据变化后自动同步 Markdown 知识文档。
 
-### 9.4 Google API 代理
+### 9.4 Google 企业邮箱登录
+
+如果你希望给网页数据加一层登录保护，现在推荐直接使用 Google 企业邮箱登录。前端会拉起 Google Identity Services，服务端会校验返回的 Google ID token，并只放行指定邮箱后缀。
+
+你需要先在 Google Cloud Console 为当前域名创建 Web Client，并把网页地址加入 Authorized JavaScript origins，例如：
+
+```text
+http://localhost:3000
+https://你的域名
+```
+
+`.env` 中需要：
+
+```env
+GOOGLE_LOGIN_ENABLED=true
+GOOGLE_LOGIN_CLIENT_ID=
+GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS=garena.com,garena-external.com
+APP_SESSION_TTL_HOURS=24
+APP_SESSION_SECRET=请填写足够长的随机字符串
+```
+
+说明：
+
+- 默认只允许 `@garena.com` 和 `@garena-external.com`
+- `GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS` 可改成逗号分隔的后缀白名单
+- 开启后，`/api/calendar`、`/api/data`、`/api/event-upload` 和 Socket 连接都需要先登录
+- 登录成功后，前端会自动恢复到原来的筛选/页签地址
+
+### 9.5 Google API 代理
 
 如果服务器无法直接访问 Google API，可配置 Cloudflare Worker 代理。
 
@@ -235,7 +264,7 @@ Worker 项目位于：
 cloudflare-worker/
 ```
 
-### 9.5 图片海报渲染
+### 9.6 图片海报渲染
 
 图片推送使用 HTML + Puppeteer 渲染器，常见变量：
 

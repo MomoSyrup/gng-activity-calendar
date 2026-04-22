@@ -17,6 +17,7 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 - 可将活动数据同步到 Alpha Knowledge
 - 支持通过 Cloudflare Worker 代理 Google API 请求
 - 支持通过 GitHub Actions 自动连接服务器并完成发布
+- 支持按环境开关启用 Google 企业邮箱登录，限制只有 `@garena.com` / `@garena-external.com` 可访问网页与上传入口
 
 ## 技术栈
 
@@ -109,6 +110,9 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 | `/api/data` | `GET` | 返回原始 Google Sheets 缓存 |
 | `/api/calendar` | `GET` | 返回合并后的统一活动数据 |
 | `/api/event-upload` | `POST` | 上传 `Event.xlsx`，字段名为 `eventFile` |
+| `/api/auth/session` | `GET` | 返回当前 Google 登录开关、登录态、允许后缀和会话信息 |
+| `/api/auth/google` | `POST` | 校验前端传来的 Google ID token，并写入应用会话 Cookie |
+| `/auth/logout` | `GET` / `POST` | 清理 Google 登录会话 |
 | `/callback` | `POST` | SeaTalk 机器人回调入口 |
 | `/api/seatalk-push` | `POST` | 触发文字版群推送，需 `x-internal-key` |
 | `/api/seatalk-image-push` | `POST` | 触发图片版群推送，需 `x-internal-key` |
@@ -164,6 +168,21 @@ GNG 活动日历是一个基于 Node.js 的活动聚合服务。它会从多份 
 - `ALPHA_KNOWLEDGE_API_KEY`
 - `ALPHA_KNOWLEDGE_EXPERT_ID`
 - `ALPHA_KNOWLEDGE_CITATION_URL`
+
+### Google 企业邮箱登录
+
+- `GOOGLE_LOGIN_ENABLED`
+- `GOOGLE_LOGIN_CLIENT_ID`
+- `GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS`
+- `APP_SESSION_TTL_HOURS`
+- `APP_SESSION_SECRET`
+
+说明：
+
+- 这是可选功能，仅在 `GOOGLE_LOGIN_ENABLED=true` 时生效
+- 需要前端 Google Identity Services 的 Client ID；服务端会校验 Google ID token
+- 默认只允许 `garena.com,garena-external.com`，可通过 `GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS` 调整
+- 登录开启后，`/api/calendar`、`/api/data`、`/api/event-upload` 与实时 Socket 连接都会要求同一份应用会话
 
 ### 代理与渲染
 

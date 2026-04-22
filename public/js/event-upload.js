@@ -3,6 +3,19 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  function buildCurrentPath() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function buildAuthRequiredError(payload) {
+    var error = new Error('请先登录 Garena Google 邮箱后再上传 Event.xlsx');
+    error.code = 'authentication_required';
+    error.loginUrl = payload && payload.loginUrl
+      ? payload.loginUrl
+      : buildCurrentPath();
+    return error;
+  }
+
   function initEventUploadPanel(options) {
     var settings = options || {};
     var form = document.getElementById('event-upload-form');
@@ -34,9 +47,20 @@
       status.textContent = '上传中，请稍候...';
       status.className = 'upload-status';
 
-      fetch('/api/event-upload', { method: 'POST', body: formData })
+      fetch('/api/event-upload', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Next-Path': buildCurrentPath(),
+        },
+      })
         .then(function (response) {
-          return response.json().then(function (json) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (json) {
+            if (response.status === 401 || json.error === 'authentication_required') {
+              throw buildAuthRequiredError(json);
+            }
             if (!response.ok) throw new Error(json.error || '上传失败');
             return json;
           });
@@ -50,6 +74,9 @@
         .catch(function (error) {
           status.textContent = error.message || '上传失败';
           status.className = 'upload-status error';
+          if (error && error.code === 'authentication_required' && typeof settings.onAuthRequired === 'function') {
+            settings.onAuthRequired(error);
+          }
           if (typeof settings.onError === 'function') settings.onError(error);
         })
         .finally(function () {

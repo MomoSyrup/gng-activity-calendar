@@ -28,12 +28,17 @@
           <span class="dot"></span>
           <span class="label">连接中…</span>
         </div>
-        <button class="version-tag header-version" id="version-btn">v0.3.29</button>
+        <div class="auth-user-panel" id="auth-user-panel"></div>
+        <button class="version-tag header-version" id="version-btn">v0.3.37</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
 
     <nav class="tabs" id="tabs"></nav>
+
+    <section class="auth-gate" id="auth-gate" hidden>
+      <div class="auth-card" id="auth-card"></div>
+    </section>
 
     <main>
       <section class="health-strip" id="health-strip"></section>
@@ -166,6 +171,84 @@
       <div class="changelog-body">
         <div class="changelog-entry">
           <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.37</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>淇鑷畾涔夌櫥褰曟寜閽€昏緫锛岀幇鍦ㄦ槸鐢ㄧ敤鎴风湡瀹炵偣鍑?Google 鍘熺敓鎸夐挳鏉ヨЕ鍙戠櫥褰曪紝涓嶅啀鐢?JS 鍘讳唬鐐瑰凡琚皟鐢ㄧ殑鑺傜偣</li>
+            <li>淇濈暀椤甸潰鑷畾涔夋繁鑹插瑙傦紝浣嗘妸鐪熷疄鍙偣鍑荤殑 Google 鎸夐挳閫忔槑瑕嗙洊鍒板悓涓€鍖哄煙锛屽吋椤惧彲鐢ㄦ€у拰瑙嗚涓€鑷?/li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.36</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>Google 鐧诲綍鍖哄煙鏀逛负椤甸潰鍘熺敓鐨勬繁鑹叉寜閽紝涓嶅啀鐩存帴鏄剧ず Google 娉ㄥ叆鐨勫畼鏂规寜閽瑙傦紝鏁翠綋鏇村拰褰撳墠涓婚涓€鑷?/li>
+            <li>淇濈暀 Google 鐧诲綍鑳藉姏鍜屼細璇濇牎楠岄€昏緫锛屼絾鎶婄湡姝ｇ殑 Google 鎸夐挳鏀惧埌闅愯棌瑙﹀彂灞傦紝閬垮厤鍐嶅嚭鐜颁寒杈圭獊鍏?/li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.35</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>Google 鐧诲綍鎸夐挳鏀逛负缁熶竴鐨勬櫘閫氭牱寮忥紝涓嶅啀鏄剧ず淇濆瓨杩囪处鍙风殑涓€у寲鎸夐挳锛屼粠鏍规湰涓婇伩鍏嶇獊鍏櫧杈?/li>
+            <li>淇濈暀鍘熸湁鐨勭櫥褰曡兘鍔涘拰浼氳瘽鏍￠獙锛屽彧鏄妸鑺傜偣鏍峰紡鍜岀櫥褰曞叆鍙ｇ粺涓€鍖栵紝鏇寸ǔ瀹氫篃鏇存暣浣?/li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.34</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>继续收敛 Google 登录按钮的边框和背景，把保存过账号后的亮边压暗，视觉上更贴合当前暗色主题</li>
+            <li>按钮悬停与聚焦状态也同步调整，避免不同登录状态下出现突兀的亮色描边</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.33</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>Google 登录按钮切换为更适合暗色界面的深色主题，并增加暗色包裹层，弱化原本突兀的白边</li>
+            <li>登录卡片按钮区重新居中和收口，视觉上更贴近当前页面风格</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.32</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>Google 登录按钮改为自动等待并重试渲染，不再因为脚本晚于页面加载而一直停在 “still loading”</li>
+            <li>当浏览器无法访问 <code>accounts.google.com</code> 时，会给出更明确的错误提示，便于排查网络或代理问题</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.31</span>
+            <span class="changelog-date">2026-04-22</span>
+          </div>
+          <ul class="changelog-list">
+            <li>网页登录门禁改为 Google 企业邮箱登录，仅允许 <code>@garena.com</code> 和 <code>@garena-external.com</code></li>
+            <li>前后端新增 Google 凭证校验与会话 Cookie，日历接口、Socket 和 Event 上传统一走同一层鉴权</li>
+            <li>同步更新环境变量、部署文档和页面提示文案，移除对 Jira Cloud / Atlassian OAuth 的依赖说明</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
             <span class="changelog-ver-tag">v0.3.29</span>
             <span class="changelog-date">2026-04-21</span>
           </div>
@@ -277,6 +360,7 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/shared/activity-display.js"></script>
   <script src="/shared/activity-insights.js"></script>
   <script src="js/event-upload.js"></script>

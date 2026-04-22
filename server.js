@@ -19,6 +19,7 @@ const {
 const excelReader = require('./excel-reader');
 const alphaSync = require('./alpha-knowledge-sync');
 const seatalkBot = require('./seatalk-bot');
+const appAuth = require('./lib/app-auth');
 const logger = require('./lib/logger');
 const packageInfo = require('./package.json');
 
@@ -33,6 +34,11 @@ const POLL_INTERVAL = env.POLL_INTERVAL;
 const ACTIVITY_SNAPSHOT_PATH = path.join(__dirname, 'data', 'activity-snapshot.json');
 const EVENT_EXCEL_PATH = env.EVENT_EXCEL_PATH || path.join(__dirname, 'data', 'Event.xlsx');
 const EVENT_UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'uploads');
+const GOOGLE_LOGIN_ENABLED = env.GOOGLE_LOGIN_ENABLED;
+const GOOGLE_LOGIN_CLIENT_ID = env.GOOGLE_LOGIN_CLIENT_ID || env.GOOGLE_CLIENT_ID;
+const GOOGLE_ALLOWED_EMAIL_DOMAINS = appAuth.normalizeAllowedEmailDomains(env.GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS);
+const APP_SESSION_TTL_MS = env.APP_SESSION_TTL_HOURS * 60 * 60 * 1000;
+const APP_SESSION_SECRET = env.APP_SESSION_SECRET;
 
 fs.mkdirSync(EVENT_UPLOAD_TMP_DIR, { recursive: true });
 
@@ -46,6 +52,7 @@ const REFRESH_TOKEN = env.GOOGLE_REFRESH_TOKEN;
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
 oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+const googleLoginClient = new google.auth.OAuth2(GOOGLE_LOGIN_CLIENT_ID);
 
 const GOOGLE_API_PROXY = (env.GOOGLE_API_PROXY || '').replace(/\/+$/, '');
 const GOOGLE_API_PROXY_KEY = env.GOOGLE_API_PROXY_KEY || '';
@@ -112,6 +119,162 @@ const upload = multer({
   dest: EVENT_UPLOAD_TMP_DIR,
   limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+function shouldUseSecureCookies() {
+  return /^https:\/\//i.test(env.CALENDAR_PUBLIC_URL || '');
+}
+
+function getCookieOptions(overrides) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax',
+    path: '/',
+    secure: shouldUseSecureCookies(),
+    ...(overrides || {}),
+  };
+}
+
+function appendSetCookie(res, value) {
+  const current = res.getHeader('Set-Cookie');
+  if (!current) {
+    res.setHeader('Set-Cookie', value);
+    return;
+  }
+  const next = Array.isArray(current) ? current.concat(value) : [current, value];
+  res.setHeader('Set-Cookie', next);
+}
+
+function setCookie(res, name, value, options) {
+  appendSetCookie(res, appAuth.serializeCookie(name, value, getCookieOptions(options)));
+}
+
+function clearCookie(res, name) {
+  appendSetCookie(
+    res,
+    appAuth.serializeCookie(
+      name,
+      '',
+      getCookieOptions({
+        maxAge: 0,
+        expires: new Date(0),
+      })
+    )
+  );
+}
+
+function getRequestCookies(req) {
+  return appAuth.parseCookieHeader(req && req.headers ? req.headers.cookie : '');
+}
+
+function readSignedCookie(header, cookieName) {
+  const cookies = appAuth.parseCookieHeader(header);
+  const token = cookies[cookieName];
+  const payload = appAuth.verifySignedToken(token, APP_SESSION_SECRET);
+  if (!payload || appAuth.isExpired(payload)) return null;
+  return payload;
+}
+
+function getAuthSession(req) {
+  if (!GOOGLE_LOGIN_ENABLED) return null;
+  return readSignedCookie(req && req.headers ? req.headers.cookie : '', appAuth.SESSION_COOKIE_NAME);
+}
+
+function sanitizeNextPath(value) {
+  return appAuth.sanitizeNextPath(value);
+}
+
+function buildLogoutPath(nextPath) {
+  return `/auth/logout?next=${encodeURIComponent(sanitizeNextPath(nextPath || '/'))}`;
+}
+
+function buildSessionView(session) {
+  if (!session) return null;
+  return {
+    accountId: session.sub,
+    name: session.name || '',
+    email: session.email || '',
+    picture: session.picture || '',
+    provider: session.provider || 'google',
+    hostedDomain: session.hostedDomain || '',
+    expiresAt: session.expiresAt || '',
+  };
+}
+
+function getNextPathFromRequest(req) {
+  const headerNext = req && req.headers ? req.headers['x-next-path'] : '';
+  if (typeof headerNext === 'string' && headerNext.trim()) {
+    return sanitizeNextPath(headerNext);
+  }
+
+  const referer = req && typeof req.get === 'function' ? req.get('referer') : '';
+  if (referer) {
+    try {
+      const parsed = new URL(referer);
+      return sanitizeNextPath(`${parsed.pathname || '/'}${parsed.search || ''}`);
+    } catch {}
+  }
+
+  return '/';
+}
+
+function requireAuthForApi(req, res, next) {
+  if (!GOOGLE_LOGIN_ENABLED) return next();
+  const session = getAuthSession(req);
+  if (session) {
+    req.authSession = session;
+    return next();
+  }
+
+  res.status(401).json({
+    error: 'authentication_required',
+    message: '请先使用 Garena Google 邮箱登录',
+  });
+}
+
+function createAppSession(payload) {
+  return {
+    sub: payload.sub || '',
+    name: payload.name || '',
+    email: payload.email || '',
+    picture: payload.picture || '',
+    provider: 'google',
+    hostedDomain: payload.hostedDomain || '',
+    exp: Date.now() + APP_SESSION_TTL_MS,
+    expiresAt: new Date(Date.now() + APP_SESSION_TTL_MS).toISOString(),
+  };
+}
+
+function setAppSessionCookie(res, sessionPayload) {
+  const token = appAuth.createSignedToken(sessionPayload, APP_SESSION_SECRET);
+  setCookie(res, appAuth.SESSION_COOKIE_NAME, token, {
+    maxAge: Math.floor(APP_SESSION_TTL_MS / 1000),
+  });
+}
+
+async function verifyGoogleCredential(credential) {
+  const ticket = await googleLoginClient.verifyIdToken({
+    idToken: credential,
+    audience: GOOGLE_LOGIN_CLIENT_ID,
+  });
+  const payload = ticket.getPayload() || {};
+  const email = String(payload.email || '').trim().toLowerCase();
+
+  if (!payload.email_verified) {
+    throw new Error('Google 账号邮箱还没有完成验证');
+  }
+
+  if (!appAuth.isAllowedGoogleEmail(email, GOOGLE_ALLOWED_EMAIL_DOMAINS)) {
+    throw new Error('仅允许使用 @garena.com 和 @garena-external.com 邮箱登录');
+  }
+
+  return {
+    sub: payload.sub || '',
+    name: payload.name || email,
+    email,
+    picture: payload.picture || '',
+    hostedDomain: payload.hd || '',
+  };
+}
 
 function loadActivitySnapshotFromDisk() {
   try {
@@ -283,9 +446,6 @@ app.post('/callback', collectRawBody, (req, res) => {
 
 // --------------- Static Files & REST API ---------------
 
-app.use('/shared', express.static(path.join(__dirname, 'shared')));
-app.use(express.static(path.join(__dirname, 'public')));
-
 function buildHealthPayload() {
   return {
     status: 'ok',
@@ -315,7 +475,88 @@ app.get('/readyz', (_req, res) => {
   res.status(payload.ready ? 200 : 503).json(payload);
 });
 
-app.get('/api/data', (_req, res) => {
+app.get('/api/auth/session', (req, res) => {
+  const nextPath = sanitizeNextPath((req.query && req.query.next) || '/');
+  const session = getAuthSession(req);
+  res.json({
+    enabled: GOOGLE_LOGIN_ENABLED,
+    authenticated: !!session,
+    provider: 'google',
+    clientId: GOOGLE_LOGIN_ENABLED ? GOOGLE_LOGIN_CLIENT_ID : '',
+    allowedEmailDomains: GOOGLE_ALLOWED_EMAIL_DOMAINS,
+    loginUrl: '',
+    logoutUrl: GOOGLE_LOGIN_ENABLED ? buildLogoutPath(nextPath) : '',
+    user: buildSessionView(session),
+  });
+});
+
+app.post('/api/auth/google', express.json({ limit: '256kb' }), async (req, res) => {
+  if (!GOOGLE_LOGIN_ENABLED) {
+    return res.status(404).json({ error: 'google_login_disabled' });
+  }
+
+  const credential = req.body && typeof req.body.credential === 'string'
+    ? req.body.credential.trim()
+    : '';
+
+  if (!credential) {
+    return res.status(400).json({ error: 'missing_google_credential' });
+  }
+
+  try {
+    const identity = await verifyGoogleCredential(credential);
+    const sessionPayload = createAppSession(identity);
+    setAppSessionCookie(res, sessionPayload);
+
+    logger.info('google_login_success', {
+      email: sessionPayload.email,
+      hostedDomain: sessionPayload.hostedDomain,
+    });
+
+    return res.json({
+      ok: true,
+      enabled: true,
+      authenticated: true,
+      provider: 'google',
+      clientId: GOOGLE_LOGIN_CLIENT_ID,
+      allowedEmailDomains: GOOGLE_ALLOWED_EMAIL_DOMAINS,
+      logoutUrl: buildLogoutPath(sanitizeNextPath((req.body && req.body.nextPath) || '/')),
+      user: buildSessionView(sessionPayload),
+    });
+  } catch (error) {
+    logger.warn('google_login_rejected', { error: error.message });
+    return res.status(401).json({
+      error: 'google_login_rejected',
+      message: error.message || 'Google 登录失败',
+    });
+  }
+});
+
+app.get('/auth/jira/start', (_req, res) => {
+  return res.status(410).json({
+    error: 'legacy_login_removed',
+    message: '??????? Google ??????',
+  });
+});
+
+app.get('/auth/jira/callback', (req, res) => {
+  return res.redirect(sanitizeNextPath((req.query && req.query.next) || '/'));
+});
+
+app.get('/auth/logout', (req, res) => {
+  clearCookie(res, appAuth.SESSION_COOKIE_NAME);
+  res.redirect(sanitizeNextPath((req.query && req.query.next) || '/'));
+});
+
+app.post('/auth/logout', (req, res) => {
+  clearCookie(res, appAuth.SESSION_COOKIE_NAME);
+  res.json({ ok: true });
+});
+
+app.use('/shared', express.static(path.join(__dirname, 'shared')));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/data', requireAuthForApi, (_req, res) => {
   res.json({ data: cachedData });
 });
 
@@ -657,7 +898,7 @@ function isExcelFilename(name) {
   return /\.xlsx$/i.test(String(name || ''));
 }
 
-app.get('/api/calendar', (_req, res) => {
+app.get('/api/calendar', requireAuthForApi, (_req, res) => {
   try {
     const activities = buildTypedActivities();
     res.json({ activities });
@@ -667,7 +908,7 @@ app.get('/api/calendar', (_req, res) => {
   }
 });
 
-app.post('/api/event-upload', upload.single('eventFile'), (req, res) => {
+app.post('/api/event-upload', requireAuthForApi, upload.single('eventFile'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请先选择 Event.xlsx 文件' });
 
   const originalName = req.file.originalname || '';
@@ -696,6 +937,19 @@ app.post('/api/event-upload', upload.single('eventFile'), (req, res) => {
 });
 
 // --------------- WebSocket ---------------
+
+io.use((socket, next) => {
+  if (!GOOGLE_LOGIN_ENABLED) return next();
+  const session = readSignedCookie(
+    socket && socket.request && socket.request.headers ? socket.request.headers.cookie || '' : '',
+    appAuth.SESSION_COOKIE_NAME
+  );
+  if (!session) {
+    return next(new Error('authentication_required'));
+  }
+  socket.request.authSession = session;
+  return next();
+});
 
 io.on('connection', (socket) => {
   console.log(`Client connected  (id: ${socket.id})`);

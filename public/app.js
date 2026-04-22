@@ -23,6 +23,9 @@
   var versionBtn = document.getElementById('version-btn');
   var changelogClose = document.getElementById('changelog-close');
   var copyFilterSummaryEl = document.getElementById('copy-filter-summary');
+  var authUserPanelEl = document.getElementById('auth-user-panel');
+  var authGateEl = document.getElementById('auth-gate');
+  var authCardEl = document.getElementById('auth-card');
 
   var filterSearchEl = document.getElementById('filter-search');
   var filterStatusEl = document.getElementById('filter-status');
@@ -138,6 +141,11 @@
   var activityColorMap = {};
   var colorIndex = 0;
   var toastTimer = null;
+  var socketClient = null;
+  var googleAuthInitialized = false;
+  var googleAuthClientId = '';
+  var googleAuthRetryTimer = null;
+  var googleAuthRetryAttempts = 0;
 
   var state = {
     activeTab: '__calendar__',
@@ -156,6 +164,17 @@
     health: {
       healthz: null,
       readyz: null,
+      error: '',
+    },
+    auth: {
+      enabled: false,
+      authenticated: false,
+      provider: 'google',
+      clientId: '',
+      allowedEmailDomains: [],
+      loginUrl: '',
+      logoutUrl: '',
+      user: null,
       error: '',
     },
     filters: {
@@ -182,12 +201,429 @@
     initGlobalActions();
     initDrawer();
     initEventUploadPanel();
-    initSocket();
 
     renderTabs();
     switchView();
     syncFilterControls();
-    refreshAllData('initial');
+    renderAll();
+    bootstrapApp();
+  }
+
+  function bootstrapApp() {
+    fetchAuthSession()
+      .then(function (payload) {
+        applyAuthSession(payload);
+        if (isAppUnlocked()) {
+          initSocket();
+          refreshAllData('initial');
+          return;
+        }
+        renderAll();
+      })
+      .catch(function (error) {
+        console.error('Failed to fetch auth session:', error);
+        state.auth.error = '登录状态获取失败，正在尝试直接加载数据';
+        renderAll();
+        initSocket();
+        refreshAllData('initial');
+      });
+  }
+
+  function buildCurrentPath() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function buildFallbackLoginUrl() {
+    return buildCurrentPath();
+  }
+
+  function buildFallbackLogoutUrl() {
+    return '/auth/logout?next=' + encodeURIComponent(buildCurrentPath());
+  }
+
+  function isAppUnlocked() {
+    return !state.auth.enabled || !!state.auth.authenticated;
+  }
+
+  function normalizeAuthState(payload) {
+    var next = payload || {};
+    return {
+      enabled: !!next.enabled,
+      authenticated: !!next.authenticated,
+      provider: next.provider || 'google',
+      clientId: next.clientId || '',
+      allowedEmailDomains: Array.isArray(next.allowedEmailDomains) ? next.allowedEmailDomains.slice() : [],
+      loginUrl: next.loginUrl || '',
+      logoutUrl: next.logoutUrl || buildFallbackLogoutUrl(),
+      user: next.user || null,
+      error: next.error || '',
+    };
+  }
+
+  function syncAuthLockState() {
+    document.body.classList.toggle('auth-locked', !isAppUnlocked());
+  }
+
+  function fetchAuthSession() {
+    return fetch('/api/auth/session?next=' + encodeURIComponent(buildCurrentPath()))
+      .then(function (res) {
+        if (!res.ok) throw new Error('auth session fetch failed');
+        return res.json();
+      });
+  }
+
+  function applyAuthSession(payload) {
+    state.auth = normalizeAuthState(payload);
+    syncAuthLockState();
+    renderAuthChrome();
+    renderAuthGate();
+
+    if (!state.auth.enabled) return;
+
+    if (state.auth.authenticated) {
+      setStatus('awaiting', 'Signed in, connecting live updates');
+      return;
+    }
+
+    setStatus('awaiting', 'Please sign in with your Garena Google account');
+  }
+
+  function buildAuthRequiredError(payload, fallbackMessage) {
+    var normalized = normalizeAuthState({
+      enabled: true,
+      authenticated: false,
+      provider: 'google',
+      clientId: payload && payload.clientId ? payload.clientId : state.auth.clientId,
+      allowedEmailDomains: payload && Array.isArray(payload.allowedEmailDomains)
+        ? payload.allowedEmailDomains
+        : getAllowedEmailDomains(),
+      logoutUrl: payload && payload.logoutUrl,
+      error: payload && payload.message ? payload.message : (fallbackMessage || 'Please sign in again with your Garena Google account'),
+    });
+    var error = new Error(normalized.error);
+    error.code = 'authentication_required';
+    error.authState = normalized;
+    return error;
+  }
+
+  function isAuthRequiredError(error) {
+    return !!(error && error.code === 'authentication_required');
+  }
+
+  function applyAuthRequired(error) {
+    teardownSocket();
+    closeDrawer();
+    state.activities = [];
+    state.recentChanges = null;
+    state.lastUpdatedAt = '';
+    state.auth = normalizeAuthState((error && error.authState) || {
+      enabled: true,
+      authenticated: false,
+      provider: 'google',
+      clientId: state.auth.clientId,
+      allowedEmailDomains: getAllowedEmailDomains(),
+      error: 'Please sign in again with your Garena Google account',
+    });
+    syncAuthLockState();
+    setStatus('awaiting', 'Please sign in with your Garena Google account');
+    renderAll();
+  }
+
+  function getAllowedEmailDomains() {
+    if (Array.isArray(state.auth.allowedEmailDomains) && state.auth.allowedEmailDomains.length) {
+      return state.auth.allowedEmailDomains.slice();
+    }
+    return ['garena.com', 'garena-external.com'];
+  }
+
+  function formatAllowedEmailDomains() {
+    return getAllowedEmailDomains().map(function (domain) {
+      return '@' + domain;
+    }).join(' / ');
+  }
+
+  function ensureGoogleLoginClient() {
+    if (!state.auth.clientId) return false;
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) return false;
+
+    if (!googleAuthInitialized || googleAuthClientId !== state.auth.clientId) {
+      window.google.accounts.id.initialize({
+        client_id: state.auth.clientId,
+        callback: handleGoogleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      googleAuthInitialized = true;
+      googleAuthClientId = state.auth.clientId;
+    }
+
+    return true;
+  }
+
+  function clearGoogleLoginRetry() {
+    if (googleAuthRetryTimer) {
+      window.clearTimeout(googleAuthRetryTimer);
+      googleAuthRetryTimer = null;
+    }
+  }
+
+  function scheduleGoogleLoginRetry() {
+    clearGoogleLoginRetry();
+    googleAuthRetryAttempts += 1;
+    googleAuthRetryTimer = window.setTimeout(function () {
+      renderGoogleLoginButton();
+    }, Math.min(2000, 250 + (googleAuthRetryAttempts * 150)));
+  }
+
+  function setGoogleLoginUiState(options) {
+    var next = options || {};
+    var cta = document.getElementById('auth-google-cta');
+    var status = document.getElementById('auth-google-status');
+
+    if (cta) {
+      cta.disabled = !!next.disabled;
+      cta.classList.toggle('is-loading', !!next.loading);
+    }
+
+    if (status) {
+      var tone = next.tone || '';
+      status.className = 'auth-google-status' + (tone ? ' is-' + tone : '');
+      status.hidden = !next.message;
+      status.textContent = next.message || '';
+    }
+  }
+
+  function renderGoogleLoginButton() {
+    var buttonHost = document.getElementById('auth-google-button');
+    if (!buttonHost) return;
+
+    clearGoogleLoginRetry();
+    buttonHost.innerHTML = '';
+
+    if (!state.auth.enabled || state.auth.authenticated) return;
+
+    if (!state.auth.clientId) {
+      setGoogleLoginUiState({
+        disabled: true,
+        loading: false,
+        tone: 'error',
+        message: 'Google login is enabled, but no Google Client ID is configured yet.',
+      });
+      return;
+    }
+
+    if (!ensureGoogleLoginClient()) {
+      if (googleAuthRetryAttempts < 12) {
+        setGoogleLoginUiState({
+          disabled: true,
+          loading: true,
+          tone: 'loading',
+          message: 'Preparing Google sign-in...',
+        });
+        scheduleGoogleLoginRetry();
+        return;
+      }
+      setGoogleLoginUiState({
+        disabled: false,
+        loading: false,
+        tone: 'error',
+        message: 'Google login script could not be loaded. Please check access to accounts.google.com and refresh.',
+      });
+      return;
+    }
+
+    googleAuthRetryAttempts = 0;
+
+    window.google.accounts.id.renderButton(buttonHost, {
+      theme: 'filled_black',
+      size: 'large',
+      type: 'standard',
+      shape: 'pill',
+      text: 'signin_with',
+      locale: 'en',
+      width: Math.max(320, Math.min(380, Math.round(buttonHost.getBoundingClientRect().width || 380))),
+    });
+
+    setGoogleLoginUiState({
+      disabled: false,
+      loading: false,
+      message: '',
+    });
+    return;
+
+    if (!state.auth.clientId) {
+      setGoogleLoginUiState({
+        disabled: true,
+        loading: false,
+        tone: 'error',
+        message: 'Google login is enabled, but no Google Client ID is configured yet.',
+      });
+      return;
+    }
+
+    if (!ensureGoogleLoginClient()) {
+      if (googleAuthRetryAttempts < 12) {
+        buttonHost.innerHTML = '<div class="auth-note">Preparing Google sign-in…</div>';
+        scheduleGoogleLoginRetry();
+        return;
+      }
+      buttonHost.innerHTML = '<div class="auth-note">Google login script could not be loaded. Please check access to accounts.google.com and refresh.</div>';
+      return;
+    }
+
+    googleAuthRetryAttempts = 0;
+
+    window.google.accounts.id.renderButton(buttonHost, {
+      theme: 'filled_black',
+      size: 'medium',
+      type: 'standard',
+      shape: 'pill',
+      text: 'signin_with',
+      locale: 'en',
+      width: 320,
+    });
+  }
+
+  function handleGoogleCredentialResponse(response) {
+    var credential = response && response.credential;
+    if (!credential) {
+      state.auth.error = 'Google login did not return a usable credential. Please try again.';
+      renderAuthChrome();
+      renderAuthGate();
+      setStatus('awaiting', state.auth.error);
+      return;
+    }
+
+    fetch('/api/auth/google', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        credential: credential,
+        nextPath: buildCurrentPath(),
+      }),
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return {};
+        }).then(function (payload) {
+          if (!res.ok) {
+            throw buildAuthRequiredError(payload, payload && payload.message ? payload.message : 'Google login failed');
+          }
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        applyAuthSession(payload);
+        renderAll();
+        if (isAppUnlocked()) {
+          initSocket();
+          refreshAllData('login');
+        }
+      })
+      .catch(function (error) {
+        var normalized = (error && error.authState) || normalizeAuthState({
+          enabled: true,
+          authenticated: false,
+          provider: 'google',
+          clientId: state.auth.clientId,
+          allowedEmailDomains: getAllowedEmailDomains(),
+          error: error && error.message ? error.message : 'Google login failed',
+        });
+        state.auth = normalized;
+        syncAuthLockState();
+        renderAuthChrome();
+        renderAuthGate();
+        setStatus('awaiting', normalized.error || 'Google login failed');
+      });
+  }
+
+  function renderAuthChrome() {
+    if (!authUserPanelEl) return;
+
+    if (!state.auth.enabled) {
+      authUserPanelEl.hidden = true;
+      authUserPanelEl.innerHTML = '';
+      return;
+    }
+
+    authUserPanelEl.hidden = false;
+
+    if (!state.auth.authenticated) {
+      authUserPanelEl.innerHTML = [
+        '<a class="auth-chip auth-chip-login" href="#auth-gate">',
+        '<span class="auth-avatar auth-avatar-fallback">G</span>',
+        '<span class="auth-chip-copy"><strong>Google Sign-In</strong><small>Only Garena email accounts are allowed</small></span>',
+        '</a>',
+      ].join('');
+      return;
+    }
+
+    var user = state.auth.user || {};
+    var secondary = user.email || getPrimarySiteLabel(user) || 'Verified by Google';
+    var avatarHtml = user.picture
+      ? '<img class="auth-avatar-image" src="' + escapeAttr(user.picture) + '" alt="' + escapeAttr(user.name || 'Google user') + '" />'
+      : '<span class="auth-avatar auth-avatar-fallback">' + escapeHtml(getUserInitial(user)) + '</span>';
+
+    authUserPanelEl.innerHTML = [
+      '<div class="auth-chip auth-chip-user">',
+      avatarHtml,
+      '<span class="auth-chip-copy"><strong>', escapeHtml(user.name || 'Google user'), '</strong><small>', escapeHtml(secondary), '</small></span>',
+      '<a class="auth-link auth-link-secondary" href="', escapeAttr(state.auth.logoutUrl || buildFallbackLogoutUrl()), '">Sign out</a>',
+      '</div>',
+    ].join('');
+  }
+
+  function renderAuthGate() {
+    if (!authGateEl || !authCardEl) return;
+
+    if (!state.auth.enabled || state.auth.authenticated) {
+      authGateEl.hidden = true;
+      authCardEl.innerHTML = '';
+      return;
+    }
+
+    var message = state.auth.error || 'This page is protected. Only Garena email accounts can open the activity calendar, operations dashboard, and Event upload tools.';
+    var html = '';
+
+    html += '<div class="auth-card-badges">';
+    html += '<span class="auth-badge">Garena Google</span>';
+    html += '<span class="auth-badge auth-badge-subtle">Domain allowlist</span>';
+    html += '</div>';
+    html += '<h2>Sign in with your Garena Google account</h2>';
+    html += '<p>' + escapeHtml(message) + '</p>';
+    html += '<div class="auth-note">Allowed domains: ' + escapeHtml(formatAllowedEmailDomains()) + '</div>';
+    html += '<div class="auth-card-actions">';
+    html += '<button class="auth-google-cta" id="auth-google-cta" type="button">';
+    html += '<span class="auth-google-cta-logo" aria-hidden="true"><svg viewBox="0 0 18 18" focusable="false" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.05-1.25-.14-1.84H9v3.48h4.5a3.85 3.85 0 0 1-1.67 2.53v2.1h2.7c1.58-1.46 2.5-3.61 2.5-6.27z"></path><path fill="#34A853" d="M9 18c2.25 0 4.13-.75 5.5-2.03l-2.7-2.1c-.75.5-1.71.8-2.8.8-2.15 0-3.97-1.45-4.62-3.4H1.6v2.14A9 9 0 0 0 9 18z"></path><path fill="#FBBC05" d="M4.38 11.27A5.41 5.41 0 0 1 4.12 9c0-.78.14-1.53.38-2.27V4.59H1.6A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.01l3.42-1.74z"></path><path fill="#EA4335" d="M9 3.58c1.22 0 2.31.42 3.17 1.24l2.38-2.38C13.12 1.1 11.24 0 9 0A9 9 0 0 0 1.6 4.59l3.42 2.14C5.65 5.03 7.28 3.58 9 3.58z"></path></svg></span>';
+    html += '<span class="auth-google-cta-copy"><strong>Continue with Google</strong><small>Only Garena email accounts are allowed</small></span>';
+    html += '<span class="auth-google-cta-arrow" aria-hidden="true">&#8594;</span>';
+    html += '</button>';
+    html += '<div class="auth-google-button" id="auth-google-button" aria-hidden="true"></div>';
+    html += '</div>';
+    html += '<div class="auth-google-status" id="auth-google-status" hidden></div>';
+    html += '<div class="auth-card-meta">After sign-in, the page will restore live updates and keep your current view.</div>';
+
+    authCardEl.innerHTML = html;
+    authGateEl.hidden = false;
+    renderGoogleLoginButton();
+  }
+
+  function getUserInitial(user) {
+    var source = (user && (user.name || user.email || user.accountId)) || 'G';
+    return String(source).trim().charAt(0).toUpperCase() || 'G';
+  }
+
+  function getPrimarySiteLabel(user) {
+    if (user && user.hostedDomain) return '@' + user.hostedDomain;
+    return '';
+  }
+
+  function teardownSocket() {
+    if (!socketClient) return;
+    socketClient.disconnect();
+    socketClient = null;
   }
 
   function initThemeToggle() {
@@ -412,6 +848,9 @@
       eventUpload.initEventUploadPanel({
         onSuccess: function () {
           refreshAllData('upload');
+        },
+        onAuthRequired: function (error) {
+          applyAuthRequired(error);
         }
       });
       return;
@@ -470,18 +909,26 @@
   }
 
   function initSocket() {
-    if (typeof io !== 'function') return;
-    var socket = io();
+    if (typeof io !== 'function' || socketClient) return;
+    socketClient = io();
 
-    socket.on('connect', function () {
+    socketClient.on('connect', function () {
       setStatus('connected', '已连接');
     });
 
-    socket.on('disconnect', function () {
+    socketClient.on('connect_error', function (error) {
+      if (error && error.message === 'authentication_required') {
+        applyAuthRequired(buildAuthRequiredError({}, 'Your session expired. Please sign in again.'));
+        return;
+      }
+      setStatus('disconnected', '已断开，正在重连');
+    });
+
+    socketClient.on('disconnect', function () {
       setStatus('disconnected', '已断开，重连中…');
     });
 
-    socket.on('sheet:update', function () {
+    socketClient.on('sheet:update', function () {
       refreshAllData('socket');
     });
   }
@@ -495,6 +942,11 @@
       fetchHealthPayload('/readyz'),
     ])
       .then(function (results) {
+        if (results[0].status === 'rejected' && isAuthRequiredError(results[0].reason)) {
+          applyAuthRequired(results[0].reason);
+          return;
+        }
+
         if (results[0].status === 'fulfilled') {
           var nextActivities = results[0].value.activities || [];
           state.activities = nextActivities;
@@ -524,6 +976,9 @@
   }
 
   function renderAll() {
+    syncAuthLockState();
+    renderAuthChrome();
+    renderAuthGate();
     syncFilterControls();
     renderTabs();
     switchView();
@@ -1745,9 +2200,20 @@
   }
 
   function fetchCalendarData() {
-    return fetch('/api/calendar').then(function (res) {
-      if (!res.ok) throw new Error('calendar fetch failed');
-      return res.json();
+    return fetch('/api/calendar', {
+      headers: {
+        'X-Next-Path': buildCurrentPath(),
+      },
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return {};
+      }).then(function (payload) {
+        if (res.status === 401 || payload.error === 'authentication_required') {
+          throw buildAuthRequiredError(payload, 'Your session expired. Please sign in again.');
+        }
+        if (!res.ok) throw new Error(payload.error || 'calendar fetch failed');
+        return payload;
+      });
     });
   }
 
