@@ -29,7 +29,7 @@
           <span class="label">连接中…</span>
         </div>
         <div class="auth-user-panel" id="auth-user-panel"></div>
-        <button class="version-tag header-version" id="version-btn">v0.3.37</button>
+        <button class="version-tag header-version" id="version-btn">v0.3.38</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -171,12 +171,23 @@
       <div class="changelog-body">
         <div class="changelog-entry">
           <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.3.38</span>
+            <span class="changelog-date">2026-05-14</span>
+          </div>
+          <ul class="changelog-list">
+            <li>修复更新日志在部分版本记录中出现的中文乱码，恢复为正常可读的中文描述</li>
+            <li>保留原有变更内容，仅修正错误编码写入导致的日志展示问题</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version">
             <span class="changelog-ver-tag">v0.3.37</span>
             <span class="changelog-date">2026-04-22</span>
           </div>
           <ul class="changelog-list">
-            <li>淇鑷畾涔夌櫥褰曟寜閽€昏緫锛岀幇鍦ㄦ槸鐢ㄧ敤鎴风湡瀹炵偣鍑?Google 鍘熺敓鎸夐挳鏉ヨЕ鍙戠櫥褰曪紝涓嶅啀鐢?JS 鍘讳唬鐐瑰凡琚皟鐢ㄧ殑鑺傜偣</li>
-            <li>淇濈暀椤甸潰鑷畾涔夋繁鑹插瑙傦紝浣嗘妸鐪熷疄鍙偣鍑荤殑 Google 鎸夐挳閫忔槑瑕嗙洊鍒板悓涓€鍖哄煙锛屽吋椤惧彲鐢ㄦ€у拰瑙嗚涓€鑷?/li>
+            <li>修复自定义登录按钮逻辑，现在是通过用户真实点击 Google 原生按钮来触发登录，不再由 JS 代点已渲染节点</li>
+            <li>保留页面自定义深色外观，但将真实可点击的 Google 按钮透明覆盖到同一区域，兼顾可用性和视觉一致性</li>
           </ul>
         </div>
 
@@ -186,8 +197,8 @@
             <span class="changelog-date">2026-04-22</span>
           </div>
           <ul class="changelog-list">
-            <li>Google 鐧诲綍鍖哄煙鏀逛负椤甸潰鍘熺敓鐨勬繁鑹叉寜閽紝涓嶅啀鐩存帴鏄剧ず Google 娉ㄥ叆鐨勫畼鏂规寜閽瑙傦紝鏁翠綋鏇村拰褰撳墠涓婚涓€鑷?/li>
-            <li>淇濈暀 Google 鐧诲綍鑳藉姏鍜屼細璇濇牎楠岄€昏緫锛屼絾鎶婄湡姝ｇ殑 Google 鎸夐挳鏀惧埌闅愯棌瑙﹀彂灞傦紝閬垮厤鍐嶅嚭鐜颁寒杈圭獊鍏?/li>
+            <li>Google 登录区域改为页面原生的深色按钮，不再直接显示 Google 注入的官方按钮外观，整体更贴合当前主题</li>
+            <li>保留 Google 登录能力和会话校验逻辑，但将真正的 Google 按钮放到隐藏触发层，避免再次出现亮边突兀的问题</li>
           </ul>
         </div>
 
@@ -197,8 +208,8 @@
             <span class="changelog-date">2026-04-22</span>
           </div>
           <ul class="changelog-list">
-            <li>Google 鐧诲綍鎸夐挳鏀逛负缁熶竴鐨勬櫘閫氭牱寮忥紝涓嶅啀鏄剧ず淇濆瓨杩囪处鍙风殑涓€у寲鎸夐挳锛屼粠鏍规湰涓婇伩鍏嶇獊鍏櫧杈?/li>
-            <li>淇濈暀鍘熸湁鐨勭櫥褰曡兘鍔涘拰浼氳瘽鏍￠獙锛屽彧鏄妸鑺傜偣鏍峰紡鍜岀櫥褰曞叆鍙ｇ粺涓€鍖栵紝鏇寸ǔ瀹氫篃鏇存暣浣?/li>
+            <li>Google 登录按钮改为统一的普通样式，不再显示保存过账号后的个性化按钮，从根本上规避突兀的白边</li>
+            <li>保留原有登录能力和会话校验，只是把节点样式和登录入口做统一收口，整体更稳定也更整洁</li>
           </ul>
         </div>
 
