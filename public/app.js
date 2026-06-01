@@ -1266,27 +1266,27 @@
     var cards = [
       {
         className: ready ? 'ok' : 'warn',
-        title: '????',
-        value: ready ? '???' : '???',
-        meta: ready ? '???????' : '????????',
+        title: '\u6570\u636e\u5c31\u7eea',
+        value: ready ? '\u5df2\u5c31\u7eea' : '\u51c6\u5907\u4e2d',
+        meta: ready ? '\u9996\u8f6e\u62c9\u53d6\u5df2\u5b8c\u6210' : '\u7b49\u5f85\u9996\u8f6e\u6570\u636e\u5b8c\u6210',
       },
       {
         className: pollHealthy ? 'ok' : 'warn',
-        title: '????',
-        value: healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '??',
-        meta: healthPayload.lastPollError || '??????',
+        title: '\u6700\u65b0\u8f6e\u8be2',
+        value: healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '\u6682\u65e0',
+        meta: healthPayload.lastPollError || '\u8f6e\u8be2\u72b6\u6001\u6b63\u5e38',
       },
       {
         className: snapshotCount > 0 ? 'ok' : 'warn',
-        title: '????',
-        value: snapshotCount + ' ???',
-        meta: '???? ' + cachedSheetCount + '??? ' + formatPollInterval(healthPayload.pollIntervalMs),
+        title: '\u5feb\u7167\u515c\u5e95',
+        value: snapshotCount + ' \u6761\u6d3b\u52a8',
+        meta: '\u7f13\u5b58\u8868\u6570 ' + cachedSheetCount + '\uff0c\u95f4\u9694 ' + formatPollInterval(healthPayload.pollIntervalMs),
       },
       {
         className: 'neutral',
-        title: '????',
-        value: healthPayload.version ? ('v' + healthPayload.version) : '??',
-        meta: healthPayload.uptimeSeconds ? ('??? ' + formatUptime(healthPayload.uptimeSeconds)) : '???????',
+        title: '\u8fd0\u884c\u7248\u672c',
+        value: healthPayload.version ? ('v' + healthPayload.version) : '\u672a\u77e5',
+        meta: healthPayload.uptimeSeconds ? ('\u5df2\u8fd0\u884c ' + formatUptime(healthPayload.uptimeSeconds)) : '\u7b49\u5f85\u8fd0\u884c\u65f6\u4fe1\u606f',
       },
     ];
 
@@ -1303,9 +1303,9 @@
     if (state.health.error) {
       html += '<div class="health-strip-note warning">' + escapeHtml(state.health.error) + '</div>';
     } else if (healthPayload.lastPollError) {
-      html += '<div class="health-strip-note warning">?????????' + escapeHtml(healthPayload.lastPollError) + '</div>';
+      html += '<div class="health-strip-note warning">\u6700\u8fd1\u4e00\u6b21\u8f6e\u8be2\u62a5\u9519\uff1a' + escapeHtml(healthPayload.lastPollError) + '</div>';
     } else {
-      html += '<div class="health-strip-note">?????? <code>/healthz</code> ? <code>/readyz</code> ?????</div>';
+      html += '<div class="health-strip-note">\u9875\u9762\u72b6\u6001\u57fa\u4e8e <code>/healthz</code> \u548c <code>/readyz</code> \u5b9e\u65f6\u540c\u6b65\u3002</div>';
     }
 
     healthStripEl.innerHTML = html;
@@ -1962,17 +1962,17 @@
         : healthPayload.cachedSheetCount || 0
     );
 
-    var html = '<div class="ops-panel-header"><h3>????</h3><p>??????????????????????????</p></div>';
+    var html = '<div class="ops-panel-header"><h3>\u8fd0\u884c\u5065\u5eb7</h3><p>\u76f4\u63a5\u8bfb\u53d6\u540e\u7aef\u5065\u5eb7\u63a5\u53e3\uff0c\u65b9\u4fbf\u5224\u65ad\u5f53\u524d\u9875\u9762\u6570\u636e\u662f\u5426\u53ef\u4fe1\u3002</p></div>';
     html += '<div class="ops-health-grid">';
-    html += renderOpsStat('????', healthPayload.version ? ('v' + healthPayload.version) : '??', '??????????');
-    html += renderOpsStat('????', readyPayload.ready ? '???' : '???', readyPayload.ready ? '???????' : '??????');
-    html += renderOpsStat('??????', healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '??', healthPayload.lastPollSuccessAt || '????????');
-    html += renderOpsStat('????', String(snapshotCount), '???????????');
-    html += renderOpsStat('????', String(cachedSheetCount), '??????? Google Sheet ??');
-    html += renderOpsStat('????', formatPollInterval(healthPayload.pollIntervalMs), '??????');
+    html += renderOpsStat('\u670d\u52a1\u7248\u672c', healthPayload.version ? ('v' + healthPayload.version) : '\u672a\u77e5', '\u5f53\u524d\u8fd0\u884c\u4e2d\u7684\u670d\u52a1\u7248\u672c');
+    html += renderOpsStat('\u6570\u636e\u5c31\u7eea', readyPayload.ready ? '\u5df2\u5c31\u7eea' : '\u51c6\u5907\u4e2d', readyPayload.ready ? '\u521d\u59cb\u62c9\u53d6\u5df2\u5b8c\u6210' : '\u7b49\u5f85\u9996\u8f6e\u6570\u636e');
+    html += renderOpsStat('\u6700\u8fd1\u6210\u529f\u8f6e\u8be2', healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '\u6682\u65e0', healthPayload.lastPollSuccessAt || '\u5c1a\u672a\u8bb0\u5f55\u8f6e\u8be2\u7ed3\u679c');
+    html += renderOpsStat('\u5feb\u7167\u6d3b\u52a8', String(snapshotCount), '\u5f53\u524d\u73af\u5883\u5feb\u7167\u4e2d\u7684\u6d3b\u52a8\u6570');
+    html += renderOpsStat('\u7f13\u5b58\u8868\u6570', String(cachedSheetCount), '\u5f53\u524d\u73af\u5883\u7f13\u5b58\u7684 Google Sheet \u6570\u91cf');
+    html += renderOpsStat('\u8f6e\u8be2\u95f4\u9694', formatPollInterval(healthPayload.pollIntervalMs), '\u540e\u7aef\u62c9\u53d6\u95f4\u9694');
     html += '</div>';
     if (healthPayload.lastPollError) {
-      html += '<div class="ops-warning">???????' + escapeHtml(healthPayload.lastPollError) + '</div>';
+      html += '<div class="ops-warning">\u6700\u8fd1\u8f6e\u8be2\u62a5\u9519\uff1a' + escapeHtml(healthPayload.lastPollError) + '</div>';
     }
     opsHealthEl.innerHTML = html;
   }
