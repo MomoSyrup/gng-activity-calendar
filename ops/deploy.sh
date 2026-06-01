@@ -82,9 +82,9 @@ fi
 
 pm2 save
 
-log "Running health check on http://127.0.0.1:${APP_PORT}/api/calendar"
+log "Running health check on http://127.0.0.1:${APP_PORT}/healthz"
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  if curl --fail --silent "http://127.0.0.1:${APP_PORT}/api/calendar" >/dev/null; then
+  if curl --fail --silent "http://127.0.0.1:${APP_PORT}/healthz" >/dev/null; then
     break
   fi
   if [[ "${attempt}" -eq 10 ]]; then
