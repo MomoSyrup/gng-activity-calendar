@@ -29,7 +29,7 @@
           <span class="label">连接中…</span>
         </div>
         <div class="auth-user-panel" id="auth-user-panel"></div>
-        <button class="version-tag header-version" id="version-btn">v0.3.38</button>
+        <button class="version-tag header-version" id="version-btn">v0.4.0</button>
         <button class="theme-toggle" id="theme-toggle" title="切换主题">&#9790;</button>
       </div>
     </header>
@@ -217,6 +217,21 @@
         <button class="changelog-close" id="changelog-close">&times;</button>
       </div>
       <div class="changelog-body">
+        <div class="changelog-entry">
+          <div class="changelog-version">
+            <span class="changelog-ver-tag">v0.4.0</span>
+            <span class="changelog-date">2026-06-01</span>
+          </div>
+          <ul class="changelog-list">
+            <li>活动数据源升级为 DEV / RCT 双环境：DEV 改为 Event.xlsx only，RCT 改为 Google Sheets + Event.xlsx 的独立运行链路</li>
+            <li>RCT 现支持在网页中手动配置主活动表与配置表来源，可精确到 worksheet，并支持 <code>spreadsheetId|worksheet|mode</code> 格式与 <code>block / gantt</code> 解析模式</li>
+            <li>新增 Environment Data Source 与 Read Debug 面板，可直接查看当前环境实际读取了哪些表、worksheet、行数与 Event.xlsx 路径</li>
+            <li>补齐表格型 gantt 解析能力，支持像“活跃活动排期”这类按周横向排期的 worksheet 直接生成活动</li>
+            <li>修复 DEV 首屏进入后日历不显示活动的问题，统一首屏渲染、月份同步与活动命中逻辑</li>
+            <li>上传、健康检查与部署链路同步适配双环境：Event.xlsx 上传按环境隔离，部署健康检查改为 <code>/healthz</code>，并修复健康卡文案与乱码问题</li>
+          </ul>
+        </div>
+
         <div class="changelog-entry">
           <div class="changelog-version">
             <span class="changelog-ver-tag">v0.3.38</span>
