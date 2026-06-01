@@ -21,6 +21,16 @@ test('validateEnv accepts the minimum supported configuration', () => {
   assert.deepEqual(warnings, []);
 });
 
+test('validateEnv allows runtime-managed Google Sheet IDs', () => {
+  const runtimeManagedEnv = createBaseEnv();
+  delete runtimeManagedEnv.GOOGLE_SHEET_ID;
+
+  const { env, warnings } = validateEnv(runtimeManagedEnv);
+
+  assert.equal(env.GOOGLE_SHEET_ID, '');
+  assert.deepEqual(warnings, []);
+});
+
 test('validateEnv rejects partial SeaTalk configuration', () => {
   assert.throws(
     () => validateEnv({ ...createBaseEnv(), SEATALK_APP_ID: 'seatalk-app' }),

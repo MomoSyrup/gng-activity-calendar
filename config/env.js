@@ -77,7 +77,7 @@ function validateEnv(source) {
       GOOGLE_CLIENT_ID: readString(source, 'GOOGLE_CLIENT_ID', { required: true }),
       GOOGLE_CLIENT_SECRET: readString(source, 'GOOGLE_CLIENT_SECRET', { required: true }),
       GOOGLE_REFRESH_TOKEN: readString(source, 'GOOGLE_REFRESH_TOKEN', { required: true }),
-      GOOGLE_SHEET_ID: readString(source, 'GOOGLE_SHEET_ID', { required: true }),
+      GOOGLE_SHEET_ID: readString(source, 'GOOGLE_SHEET_ID'),
       GOOGLE_SHEET_ID_2: readString(source, 'GOOGLE_SHEET_ID_2'),
       EVENT_EXCEL_PATH: readString(source, 'EVENT_EXCEL_PATH'),
       GOOGLE_API_PROXY: readString(source, 'GOOGLE_API_PROXY'),

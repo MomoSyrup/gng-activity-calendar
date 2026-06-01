@@ -7,6 +7,7 @@
 
   var statusEl = document.getElementById('status');
   var statusLabel = statusEl ? statusEl.querySelector('.label') : null;
+  var environmentSwitcherEl = document.getElementById('environment-switcher');
   var tabsEl = document.getElementById('tabs');
   var healthStripEl = document.getElementById('health-strip');
   var changeBannerEl = document.getElementById('change-banner');
@@ -26,6 +27,17 @@
   var authUserPanelEl = document.getElementById('auth-user-panel');
   var authGateEl = document.getElementById('auth-gate');
   var authCardEl = document.getElementById('auth-card');
+  var environmentConfigSummaryEl = document.getElementById('environment-config-summary');
+  var rctSheetConfigEl = document.getElementById('rct-sheet-config');
+  var rctPrimarySheetIdsEl = document.getElementById('rct-primary-sheet-ids');
+  var rctConfigSheetIdEl = document.getElementById('rct-config-sheet-id');
+  var rctCalendarSheetNameEl = document.getElementById('rct-calendar-sheet-name');
+  var rctConfigSheetNameEl = document.getElementById('rct-config-sheet-name');
+  var rctIncludeConfigSourceEl = document.getElementById('rct-include-config-source');
+  var rctSheetConfigSaveEl = document.getElementById('rct-sheet-config-save');
+  var rctSheetConfigStatusEl = document.getElementById('rct-sheet-config-status');
+  var environmentReadDebugSummaryEl = document.getElementById('environment-read-debug-summary');
+  var environmentReadDebugEl = document.getElementById('environment-read-debug');
 
   var filterSearchEl = document.getElementById('filter-search');
   var filterStatusEl = document.getElementById('filter-status');
@@ -60,6 +72,11 @@
     { key: '__upcoming__', className: 'tab-upcoming', label: '即将开始' },
     { key: '__operations__', className: 'tab-operations', label: '运营视角' },
     { key: '__config__', className: 'tab-config', label: '数据巡检' },
+  ];
+
+  var ENVIRONMENT_DEFS = [
+    { key: 'dev', label: 'DEV', caption: 'Event.xlsx only' },
+    { key: 'rct', label: 'RCT', caption: 'Google Sheets + Event.xlsx' },
   ];
 
   var QUICK_VIEW_DEFS = [
@@ -148,6 +165,7 @@
   var googleAuthRetryAttempts = 0;
 
   var state = {
+    activeEnvironment: 'rct',
     activeTab: '__calendar__',
     quickView: 'all',
     activeTypeFilter: 'all',
@@ -166,6 +184,7 @@
       readyz: null,
       error: '',
     },
+    environmentConfig: null,
     auth: {
       enabled: false,
       authenticated: false,
@@ -194,6 +213,7 @@
     restoreStateFromUrl();
     initThemeToggle();
     initChangelogModal();
+    initEnvironmentSwitcher();
     initTabs();
     initFilterControls();
     initTypeFilterBar();
@@ -201,7 +221,9 @@
     initGlobalActions();
     initDrawer();
     initEventUploadPanel();
+    initEnvironmentConfigPanel();
 
+    renderEnvironmentSwitcher();
     renderTabs();
     switchView();
     syncFilterControls();
@@ -658,6 +680,167 @@
     });
   }
 
+  function getActiveEnvironment() {
+    return state.activeEnvironment || 'rct';
+  }
+
+  function initEnvironmentSwitcher() {
+    if (!environmentSwitcherEl) return;
+    environmentSwitcherEl.addEventListener('click', function (event) {
+      var button = event.target.closest('.env-chip');
+      if (!button) return;
+      var nextEnv = button.getAttribute('data-environment') || 'rct';
+      if (nextEnv === state.activeEnvironment) return;
+      state.activeEnvironment = nextEnv;
+      state.environmentConfig = null;
+      state.calYear = null;
+      state.calMonth = null;
+      state.selectedDate = null;
+      renderEnvironmentSwitcher();
+      renderEnvironmentConfigPanel();
+      refreshAllData('environment-switch');
+      syncUrlState();
+    });
+  }
+
+  function renderEnvironmentSwitcher() {
+    if (!environmentSwitcherEl) return;
+    var html = '';
+    ENVIRONMENT_DEFS.forEach(function (item) {
+      var active = item.key === getActiveEnvironment();
+      html += '<button class="env-chip' + (active ? ' active' : '') + '" type="button" data-environment="' + item.key + '">';
+      html += '<strong>' + escapeHtml(item.label) + '</strong>';
+      html += '<small>' + escapeHtml(item.caption) + '</small>';
+      html += '</button>';
+    });
+    environmentSwitcherEl.innerHTML = html;
+  }
+
+  function initEnvironmentConfigPanel() {
+    if (rctPrimarySheetIdsEl) {
+      rctPrimarySheetIdsEl.placeholder = 'One source per line: spreadsheetId|worksheetName|block-or-gantt';
+    }
+    if (rctConfigSheetIdEl) {
+      rctConfigSheetIdEl.placeholder = 'Spreadsheet ID for config worksheets';
+    }
+    if (rctCalendarSheetNameEl) {
+      rctCalendarSheetNameEl.placeholder = 'Default: 1.0 event calendar';
+    }
+    if (rctConfigSheetNameEl) {
+      rctConfigSheetNameEl.placeholder = 'Default: 活动配置';
+    }
+    if (!rctSheetConfigSaveEl) return;
+    rctSheetConfigSaveEl.addEventListener('click', function () {
+      saveEnvironmentConfig();
+    });
+  }
+
+  function renderEnvironmentConfigPanel() {
+    if (!environmentConfigSummaryEl) return;
+    var config = state.environmentConfig;
+    var envKey = getActiveEnvironment();
+    if (!config || !config.environment) {
+      environmentConfigSummaryEl.textContent = 'Loading current environment source settings...';
+      if (rctSheetConfigEl) rctSheetConfigEl.hidden = envKey !== 'rct';
+      return;
+    }
+
+    var info = config.environment;
+    var summary = info.label + ' uses ' + (info.usesGoogleSheets ? 'Google Sheets + Event.xlsx' : 'Event.xlsx only');
+    summary += '. Current Event path: ' + (info.eventExcelPath || 'not set');
+    if (info.eventExcelOverrideActive) summary += ' (manual upload override active)';
+    environmentConfigSummaryEl.textContent = summary;
+
+    if (rctSheetConfigEl) rctSheetConfigEl.hidden = envKey !== 'rct';
+    if (envKey === 'rct') {
+      if (rctPrimarySheetIdsEl) {
+        rctPrimarySheetIdsEl.value = Array.isArray(info.primarySheetSources)
+          ? info.primarySheetSources.map(function (source) {
+            return [
+              source.spreadsheetId || '',
+              source.worksheet || '',
+              source.mode || 'block',
+            ].join('|');
+          }).join('\n')
+          : '';
+      }
+      if (rctConfigSheetIdEl) {
+        rctConfigSheetIdEl.value = info.configSource && info.configSource.spreadsheetId ? info.configSource.spreadsheetId : '';
+      }
+      if (rctCalendarSheetNameEl) {
+        rctCalendarSheetNameEl.value = info.configSource && info.configSource.calendarWorksheet
+          ? info.configSource.calendarWorksheet
+          : '1.0 event calendar';
+      }
+      if (rctConfigSheetNameEl) {
+        rctConfigSheetNameEl.value = info.configSource && info.configSource.configWorksheet
+          ? info.configSource.configWorksheet
+          : '活动配置';
+      }
+      if (rctIncludeConfigSourceEl) {
+        rctIncludeConfigSourceEl.checked = info.includeConfigSource !== false;
+      }
+    }
+
+    renderEnvironmentReadDebug(info);
+  }
+
+  function renderEnvironmentReadDebug(info) {
+    if (!environmentReadDebugSummaryEl || !environmentReadDebugEl) return;
+    var readSummary = info && info.lastReadSummary ? info.lastReadSummary : null;
+    if (!readSummary) {
+      environmentReadDebugSummaryEl.textContent = 'Waiting for the latest read summary...';
+      environmentReadDebugEl.innerHTML = '';
+      return;
+    }
+
+    environmentReadDebugSummaryEl.textContent =
+      'Primary rows: ' + String(readSummary.primaryRowCount || 0) +
+      ' | Config calendar rows: ' + String(readSummary.configCalendarRowCount || 0) +
+      ' | Config activity rows: ' + String(readSummary.configRowCount || 0) +
+      ' | Event settings: ' + String(readSummary.eventSettingsCount || 0);
+
+    var html = '';
+    html += '<div class="environment-read-debug-card">';
+    html += '<h4>Event.xlsx</h4>';
+    html += '<p>Path: ' + escapeHtml(readSummary.eventExcelPath || 'not set') + '</p>';
+    html += '<p>Loaded EventSetting rows: ' + escapeHtml(String(readSummary.eventSettingsCount || 0)) + '</p>';
+    html += '</div>';
+
+    var primarySources = Array.isArray(readSummary.primarySources) ? readSummary.primarySources : [];
+    if (primarySources.length === 0) {
+      html += '<div class="environment-read-debug-card"><h4>Primary Sources</h4><p>No Google Sheets were read for this environment.</p></div>';
+    } else {
+      primarySources.forEach(function (source, index) {
+        html += '<div class="environment-read-debug-card">';
+        html += '<h4>Primary Source ' + escapeHtml(String(index + 1)) + '</h4>';
+        html += '<p>Spreadsheet ID: ' + escapeHtml(source.spreadsheetId || '') + '</p>';
+        var requestedSheets = Array.isArray(source.requestedSheets) ? source.requestedSheets : [];
+        html += '<p>Requested worksheets: ' + escapeHtml(requestedSheets.map(function (entry) {
+          return (entry.worksheet || '') + ' [' + (entry.mode || 'block') + ']';
+        }).join(', ') || '(none)') + '</p>';
+        html += '<p>Fetched worksheets: ' + escapeHtml((source.sheetNames || []).join(', ') || '(none)') + '</p>';
+        html += '<p>Total rows read: ' + escapeHtml(String(source.rowCount || 0)) + '</p>';
+        html += '</div>';
+      });
+    }
+
+    html += '<div class="environment-read-debug-card">';
+    html += '<h4>Config Source</h4>';
+    if (readSummary.includeConfigSource === false) {
+      html += '<p>Config source merge is disabled.</p>';
+    } else if (!readSummary.configSource || !readSummary.configSource.spreadsheetId) {
+      html += '<p>No config spreadsheet is configured.</p>';
+    } else {
+      html += '<p>Spreadsheet ID: ' + escapeHtml(readSummary.configSource.spreadsheetId || '') + '</p>';
+      html += '<p>Calendar worksheet: ' + escapeHtml(readSummary.configSource.calendarWorksheet || '') + ' (' + escapeHtml(String(readSummary.configCalendarRowCount || 0)) + ' rows)</p>';
+      html += '<p>Config worksheet: ' + escapeHtml(readSummary.configSource.configWorksheet || '') + ' (' + escapeHtml(String(readSummary.configRowCount || 0)) + ' rows)</p>';
+    }
+    html += '</div>';
+
+    environmentReadDebugEl.innerHTML = html;
+  }
+
   function initTabs() {
     tabsEl.addEventListener('click', function (event) {
       var btn = event.target.closest('.tab');
@@ -846,6 +1029,7 @@
   function initEventUploadPanel() {
     if (eventUpload.initEventUploadPanel) {
       eventUpload.initEventUploadPanel({
+        getEnvironment: getActiveEnvironment,
         onSuccess: function () {
           refreshAllData('upload');
         },
@@ -885,7 +1069,7 @@
       status.textContent = '上传中，请稍候...';
       status.className = 'upload-status';
 
-      fetch('/api/event-upload', { method: 'POST', body: fd })
+      fetch('/api/event-upload?env=' + encodeURIComponent(getActiveEnvironment()), { method: 'POST', body: fd })
         .then(function (res) {
           return res.json().then(function (json) {
             if (!res.ok) throw new Error(json.error || '上传失败');
@@ -938,6 +1122,7 @@
 
     Promise.allSettled([
       fetchCalendarData(),
+      fetchEnvironmentConfig(),
       fetchHealthPayload('/healthz'),
       fetchHealthPayload('/readyz'),
     ])
@@ -950,6 +1135,7 @@
         if (results[0].status === 'fulfilled') {
           var nextActivities = results[0].value.activities || [];
           state.activities = nextActivities;
+          syncCalendarMonthToActivities(nextActivities, triggerSource);
           assignColors();
           state.lastUpdatedAt = new Date().toISOString();
 
@@ -960,15 +1146,24 @@
         }
 
         if (results[1].status === 'fulfilled') {
-          state.health.healthz = results[1].value;
+          state.environmentConfig = results[1].value;
         }
 
         if (results[2].status === 'fulfilled') {
-          state.health.readyz = results[2].value;
+          state.health.healthz = results[2].value;
+        }
+
+        if (results[3].status === 'fulfilled') {
+          state.health.readyz = results[3].value;
         }
 
         state.health.error = buildHealthError(results);
         renderAll();
+        if (results[0].status === 'fulfilled' && (triggerSource === 'initial' || triggerSource === 'environment-switch')) {
+          window.requestAnimationFrame(function () {
+            renderCalendar();
+          });
+        }
       })
       .catch(function (err) {
         console.error('Failed to refresh data:', err);
@@ -979,6 +1174,8 @@
     syncAuthLockState();
     renderAuthChrome();
     renderAuthGate();
+    renderEnvironmentSwitcher();
+    renderEnvironmentConfigPanel();
     syncFilterControls();
     renderTabs();
     switchView();
@@ -1052,34 +1249,44 @@
 
     var readyPayload = state.health.readyz || {};
     var healthPayload = state.health.healthz || {};
+    var envKey = getActiveEnvironment();
     var ready = !!readyPayload.ready;
     var pollHealthy = !!healthPayload.lastPollSuccessAt && !healthPayload.lastPollError;
-    var snapshotCount = Number(healthPayload.snapshotActivities || 0);
+    var snapshotCount = Number(
+      healthPayload.snapshotActivities && typeof healthPayload.snapshotActivities === 'object'
+        ? healthPayload.snapshotActivities[envKey] || 0
+        : healthPayload.snapshotActivities || 0
+    );
+    var cachedSheetCount = Number(
+      healthPayload.cachedSheetCount && typeof healthPayload.cachedSheetCount === 'object'
+        ? healthPayload.cachedSheetCount[envKey] || 0
+        : healthPayload.cachedSheetCount || 0
+    );
 
     var cards = [
       {
         className: ready ? 'ok' : 'warn',
-        title: '数据就绪',
-        value: ready ? '已就绪' : '准备中',
-        meta: ready ? '首轮拉取已完成' : '等待首轮数据完成',
+        title: '????',
+        value: ready ? '???' : '???',
+        meta: ready ? '???????' : '????????',
       },
       {
         className: pollHealthy ? 'ok' : 'warn',
-        title: '最新轮询',
-        value: healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '暂无',
-        meta: healthPayload.lastPollError || '轮询状态正常',
+        title: '????',
+        value: healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '??',
+        meta: healthPayload.lastPollError || '??????',
       },
       {
         className: snapshotCount > 0 ? 'ok' : 'warn',
-        title: '快照兜底',
-        value: snapshotCount + ' 条活动',
-        meta: '缓存表数 ' + Number(healthPayload.cachedSheetCount || 0) + '，间隔 ' + formatPollInterval(healthPayload.pollIntervalMs),
+        title: '????',
+        value: snapshotCount + ' ???',
+        meta: '???? ' + cachedSheetCount + '??? ' + formatPollInterval(healthPayload.pollIntervalMs),
       },
       {
         className: 'neutral',
-        title: '运行版本',
-        value: healthPayload.version ? ('v' + healthPayload.version) : '未知',
-        meta: healthPayload.uptimeSeconds ? ('已运行 ' + formatUptime(healthPayload.uptimeSeconds)) : '等待运行时信息',
+        title: '????',
+        value: healthPayload.version ? ('v' + healthPayload.version) : '??',
+        meta: healthPayload.uptimeSeconds ? ('??? ' + formatUptime(healthPayload.uptimeSeconds)) : '???????',
       },
     ];
 
@@ -1096,9 +1303,9 @@
     if (state.health.error) {
       html += '<div class="health-strip-note warning">' + escapeHtml(state.health.error) + '</div>';
     } else if (healthPayload.lastPollError) {
-      html += '<div class="health-strip-note warning">最近一次轮询报错：' + escapeHtml(healthPayload.lastPollError) + '</div>';
+      html += '<div class="health-strip-note warning">?????????' + escapeHtml(healthPayload.lastPollError) + '</div>';
     } else {
-      html += '<div class="health-strip-note">页面状态基于 <code>/healthz</code> 和 <code>/readyz</code> 实时同步。</div>';
+      html += '<div class="health-strip-note">?????? <code>/healthz</code> ? <code>/readyz</code> ?????</div>';
     }
 
     healthStripEl.innerHTML = html;
@@ -1295,7 +1502,7 @@
     var monthStart = fmtDate(state.calYear, state.calMonth + 1, 1);
     var monthEnd = fmtDate(state.calYear, state.calMonth + 1, daysInMonth);
     var monthActivities = filteredActivities.filter(function (activity) {
-      return activity.startDate && activity.startDate <= monthEnd && getEndDate(activity) >= monthStart;
+      return overlapsRange(activity, monthStart, monthEnd);
     });
     var periodMap = buildPeriodIndexMap(state.activities);
 
@@ -1314,6 +1521,42 @@
     renderSidebar(monthActivities, periodMap);
     renderSwimlaneTimeline(monthActivities, daysInMonth, periodMap);
     renderActivityCards(monthActivities, document.getElementById('activity-detail'), periodMap);
+  }
+
+  function syncCalendarMonthToActivities(activities, triggerSource) {
+    if (!Array.isArray(activities) || activities.length === 0) return;
+    if (triggerSource !== 'initial' && triggerSource !== 'environment-switch') return;
+
+    initCalendarMonth();
+
+    var daysInCurrentMonth = new Date(state.calYear, state.calMonth + 1, 0).getDate();
+    var currentMonthStart = fmtDate(state.calYear, state.calMonth + 1, 1);
+    var currentMonthEnd = fmtDate(state.calYear, state.calMonth + 1, daysInCurrentMonth);
+    var hasActivitiesInCurrentMonth = activities.some(function (activity) {
+      return activity.startDate && activity.startDate <= currentMonthEnd && getEndDate(activity) >= currentMonthStart;
+    });
+    if (hasActivitiesInCurrentMonth) return;
+
+    var today = todayKey();
+    var datedActivities = activities
+      .filter(function (activity) {
+        return !!activity.startDate;
+      })
+      .slice()
+      .sort(function (a, b) {
+        return String(a.startDate || '').localeCompare(String(b.startDate || ''));
+      });
+    if (datedActivities.length === 0) return;
+
+    var targetActivity = datedActivities.find(function (activity) {
+      return getEndDate(activity) >= today;
+    }) || datedActivities[0];
+    var targetDate = parseDate(targetActivity.startDate);
+    if (!targetDate) return;
+
+    state.calYear = targetDate.getFullYear();
+    state.calMonth = targetDate.getMonth();
+    state.selectedDate = targetActivity.startDate;
   }
 
   function bindCalendarControls() {
@@ -1704,20 +1947,32 @@
 
   function renderOpsHealth() {
     if (!opsHealthEl) return;
+
     var healthPayload = state.health.healthz || {};
     var readyPayload = state.health.readyz || {};
+    var envKey = getActiveEnvironment();
+    var snapshotCount = Number(
+      healthPayload.snapshotActivities && typeof healthPayload.snapshotActivities === 'object'
+        ? healthPayload.snapshotActivities[envKey] || 0
+        : healthPayload.snapshotActivities || 0
+    );
+    var cachedSheetCount = Number(
+      healthPayload.cachedSheetCount && typeof healthPayload.cachedSheetCount === 'object'
+        ? healthPayload.cachedSheetCount[envKey] || 0
+        : healthPayload.cachedSheetCount || 0
+    );
 
-    var html = '<div class="ops-panel-header"><h3>运行健康</h3><p>直接读取后端健康接口，方便判断当前页面数据是否可信。</p></div>';
+    var html = '<div class="ops-panel-header"><h3>????</h3><p>??????????????????????????</p></div>';
     html += '<div class="ops-health-grid">';
-    html += renderOpsStat('服务版本', healthPayload.version ? ('v' + healthPayload.version) : '未知', '当前线上代码版本');
-    html += renderOpsStat('数据就绪', readyPayload.ready ? '已就绪' : '准备中', readyPayload.ready ? '初始拉取已完成' : '等待首轮数据');
-    html += renderOpsStat('最近成功轮询', healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '暂无', healthPayload.lastPollSuccessAt || '尚未记录轮询结果');
-    html += renderOpsStat('快照活动', String(Number(healthPayload.snapshotActivities || 0)), '兜底快照中的活动数');
-    html += renderOpsStat('缓存表数', String(Number(healthPayload.cachedSheetCount || 0)), '当前缓存的 Google Sheet 数量');
-    html += renderOpsStat('轮询间隔', formatPollInterval(healthPayload.pollIntervalMs), '后端拉取间隔');
+    html += renderOpsStat('????', healthPayload.version ? ('v' + healthPayload.version) : '??', '??????????');
+    html += renderOpsStat('????', readyPayload.ready ? '???' : '???', readyPayload.ready ? '???????' : '??????');
+    html += renderOpsStat('??????', healthPayload.lastPollSuccessAt ? formatRelativeTime(healthPayload.lastPollSuccessAt) : '??', healthPayload.lastPollSuccessAt || '????????');
+    html += renderOpsStat('????', String(snapshotCount), '???????????');
+    html += renderOpsStat('????', String(cachedSheetCount), '??????? Google Sheet ??');
+    html += renderOpsStat('????', formatPollInterval(healthPayload.pollIntervalMs), '??????');
     html += '</div>';
     if (healthPayload.lastPollError) {
-      html += '<div class="ops-warning">最近轮询报错：' + escapeHtml(healthPayload.lastPollError) + '</div>';
+      html += '<div class="ops-warning">???????' + escapeHtml(healthPayload.lastPollError) + '</div>';
     }
     opsHealthEl.innerHTML = html;
   }
@@ -2194,13 +2449,13 @@
 
   function buildHealthError(results) {
     var messages = [];
-    if (results[1] && results[1].status === 'rejected') messages.push('healthz 获取失败');
-    if (results[2] && results[2].status === 'rejected') messages.push('readyz 获取失败');
+    if (results[2] && results[2].status === 'rejected') messages.push('healthz 获取失败');
+    if (results[3] && results[3].status === 'rejected') messages.push('readyz 获取失败');
     return messages.join('，');
   }
 
   function fetchCalendarData() {
-    return fetch('/api/calendar', {
+    return fetch('/api/calendar?env=' + encodeURIComponent(getActiveEnvironment()), {
       headers: {
         'X-Next-Path': buildCurrentPath(),
       },
@@ -2215,6 +2470,77 @@
         return payload;
       });
     });
+  }
+
+  function fetchEnvironmentConfig() {
+    return fetch('/api/environment-config?env=' + encodeURIComponent(getActiveEnvironment()), {
+      headers: {
+        'X-Next-Path': buildCurrentPath(),
+      },
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return {};
+      }).then(function (payload) {
+        if (res.status === 401 || payload.error === 'authentication_required') {
+          throw buildAuthRequiredError(payload, 'Your session expired. Please sign in again.');
+        }
+        if (!res.ok) throw new Error(payload.error || 'environment config fetch failed');
+        return payload;
+      });
+    });
+  }
+
+  function saveEnvironmentConfig() {
+    if (getActiveEnvironment() !== 'rct' || !rctSheetConfigStatusEl) return;
+
+    rctSheetConfigStatusEl.textContent = 'Saving RCT source rules...';
+    rctSheetConfigStatusEl.className = 'upload-status';
+    if (rctSheetConfigSaveEl) rctSheetConfigSaveEl.disabled = true;
+
+    fetch('/api/environment-config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Next-Path': buildCurrentPath(),
+      },
+      body: JSON.stringify({
+        env: 'rct',
+        primarySheetSources: rctPrimarySheetIdsEl ? rctPrimarySheetIdsEl.value : '',
+        includeConfigSource: rctIncludeConfigSourceEl ? !!rctIncludeConfigSourceEl.checked : true,
+        configSource: {
+          spreadsheetId: rctConfigSheetIdEl ? rctConfigSheetIdEl.value : '',
+          calendarWorksheet: rctCalendarSheetNameEl ? rctCalendarSheetNameEl.value : '',
+          configWorksheet: rctConfigSheetNameEl ? rctConfigSheetNameEl.value : '',
+        },
+      }),
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return {};
+        }).then(function (payload) {
+          if (res.status === 401 || payload.error === 'authentication_required') {
+            throw buildAuthRequiredError(payload, 'Your session expired. Please sign in again.');
+          }
+          if (!res.ok) throw new Error(payload.error || 'Failed to save RCT source rules');
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        state.environmentConfig = payload;
+        rctSheetConfigStatusEl.textContent = 'RCT source rules saved.';
+        rctSheetConfigStatusEl.className = 'upload-status success';
+        refreshAllData('environment-config-save');
+      })
+      .catch(function (error) {
+        if (error && error.code === 'authentication_required') {
+          applyAuthRequired(error);
+        }
+        rctSheetConfigStatusEl.textContent = error.message || 'Failed to save RCT source rules';
+        rctSheetConfigStatusEl.className = 'upload-status error';
+      })
+      .finally(function () {
+        if (rctSheetConfigSaveEl) rctSheetConfigSaveEl.disabled = false;
+      });
   }
 
   function fetchHealthPayload(url) {
@@ -2325,6 +2651,10 @@
 
   function getEndDate(activity) {
     return activityInsights.getEndDate ? activityInsights.getEndDate(activity) : ((activity && (activity.endDate || activity.startDate)) || '');
+  }
+
+  function hasType(activity, typeName) {
+    return Array.isArray(activity && activity.types) && activity.types.indexOf(typeName) !== -1;
   }
 
   function hasRewards(activity) {
@@ -2464,6 +2794,7 @@
 
   function restoreStateFromUrl() {
     var params = new URLSearchParams(window.location.search);
+    var envKey = params.get('env');
     var tab = params.get('tab');
     var quickView = params.get('quick');
     var type = params.get('type');
@@ -2471,6 +2802,7 @@
     var month = params.get('month');
     var selectedDate = params.get('date');
 
+    if (envKey && ENVIRONMENT_DEFS.some(function (item) { return item.key === envKey; })) state.activeEnvironment = envKey;
     if (tab && TAB_DEFS.some(function (item) { return item.key === tab; })) state.activeTab = tab;
     if (quickView && QUICK_VIEW_DEFS.some(function (item) { return item.key === quickView; })) state.quickView = quickView;
     if (type && (type === 'all' || FILTER_LABELS[type])) state.activeTypeFilter = type;
@@ -2491,6 +2823,7 @@
 
   function syncUrlState() {
     var params = new URLSearchParams();
+    if (state.activeEnvironment !== 'rct') params.set('env', state.activeEnvironment);
     if (state.activeTab !== '__calendar__') params.set('tab', state.activeTab);
     if (state.quickView !== 'all') params.set('quick', state.quickView);
     if (state.activeTypeFilter !== 'all') params.set('type', state.activeTypeFilter);

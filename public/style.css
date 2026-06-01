@@ -216,6 +216,111 @@ h1 {
   min-height: 40px;
 }
 
+.environment-switcher {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+}
+
+.environment-switcher .env-chip {
+  border: 1px solid var(--panel-border, rgba(255,255,255,0.12));
+  background: var(--panel-bg, rgba(15,23,42,0.72));
+  color: var(--text-primary, #fff);
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  min-width: 180px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.environment-switcher .env-chip.active {
+  border-color: var(--accent, #60a5fa);
+  box-shadow: 0 0 0 1px rgba(96,165,250,0.35);
+}
+
+.environment-switcher .env-chip strong,
+.environment-switcher .env-chip small {
+  display: block;
+}
+
+.environment-switcher .env-chip small {
+  margin-top: 0.2rem;
+  opacity: 0.72;
+}
+
+.environment-config-panel {
+  margin-bottom: 1rem;
+}
+
+.environment-config-head {
+  margin-bottom: 1rem;
+}
+
+.environment-config-field textarea,
+.environment-config-field input {
+  width: 100%;
+}
+
+.environment-config-actions {
+  align-items: center;
+}
+
+.environment-config-toggle span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.environment-config-help {
+  margin: -0.15rem 0 0.9rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border, rgba(255,255,255,0.12));
+  background: rgba(255,255,255,0.035);
+}
+
+.environment-config-help p,
+.environment-config-help pre {
+  margin: 0;
+}
+
+.environment-config-help p + p,
+.environment-config-help p + pre,
+.environment-config-help pre + p {
+  margin-top: 0.45rem;
+}
+
+.environment-config-help pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92rem;
+  color: var(--text-primary, #fff);
+}
+
+.environment-read-debug {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.environment-read-debug-card {
+  border: 1px solid var(--panel-border, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: rgba(255,255,255,0.03);
+}
+
+.environment-read-debug-card h4,
+.environment-read-debug-card p {
+  margin: 0;
+}
+
+.environment-read-debug-card p + p,
+.environment-read-debug-card h4 + p {
+  margin-top: 0.35rem;
+}
+
 .auth-chip {
   display: inline-flex;
   align-items: center;

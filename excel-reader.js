@@ -10,12 +10,6 @@ const TYPE_MAP = {
   EventGachaBravo: '新抽奖',
 };
 
-let cachedSettings = [];
-let cachedTypesByEventId = {};
-let cachedOverviewIds = new Set();
-let lastMtime = 0;
-let filePath = null;
-
 function excelSerialToDate(serial) {
   if (typeof serial !== 'number' || serial < 1) return null;
   const utcDays = Math.floor(serial) - 25569;
@@ -79,43 +73,72 @@ function parseExcelFile(fpath) {
   return { settings, typesByEventId, overviewIds };
 }
 
-function load(fpath) {
-  filePath = fpath || filePath;
-  if (!filePath) return;
+function createReader() {
+  let cachedSettings = [];
+  let cachedTypesByEventId = {};
+  let cachedOverviewIds = new Set();
+  let lastMtime = 0;
+  let filePath = null;
 
-  try {
-    const stat = fs.statSync(filePath);
-    if (stat.mtimeMs === lastMtime) return;
-    lastMtime = stat.mtimeMs;
-  } catch {
-    return;
+  function load(fpath) {
+    filePath = fpath || filePath;
+    if (!filePath) return;
+
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.mtimeMs === lastMtime) return;
+      lastMtime = stat.mtimeMs;
+    } catch {
+      return;
+    }
+
+    try {
+      const result = parseExcelFile(filePath);
+      cachedSettings = result.settings;
+      cachedTypesByEventId = result.typesByEventId;
+      cachedOverviewIds = result.overviewIds;
+      console.log(
+        `[excel-reader] Loaded ${cachedSettings.length} events, ` +
+        `${Object.keys(cachedTypesByEventId).length} typed IDs, ` +
+        `${cachedOverviewIds.size} overview IDs from ${filePath}`
+      );
+    } catch (err) {
+      console.error('[excel-reader] Parse error:', err.message);
+    }
   }
 
-  try {
-    const result = parseExcelFile(filePath);
-    cachedSettings = result.settings;
-    cachedTypesByEventId = result.typesByEventId;
-    cachedOverviewIds = result.overviewIds;
-    console.log(
-      `[excel-reader] Loaded ${cachedSettings.length} events, ` +
-      `${Object.keys(cachedTypesByEventId).length} typed IDs, ` +
-      `${cachedOverviewIds.size} overview IDs`
-    );
-  } catch (err) {
-    console.error('[excel-reader] Parse error:', err.message);
+  function getEventSettings() {
+    return cachedSettings;
   }
+
+  function getEventTypes() {
+    return cachedTypesByEventId;
+  }
+
+  function getOverviewIds() {
+    return cachedOverviewIds;
+  }
+
+  function getFilePath() {
+    return filePath;
+  }
+
+  return {
+    load,
+    getEventSettings,
+    getEventTypes,
+    getOverviewIds,
+    getFilePath,
+  };
 }
 
-function getEventSettings() {
-  return cachedSettings;
-}
+const defaultReader = createReader();
 
-function getEventTypes() {
-  return cachedTypesByEventId;
-}
-
-function getOverviewIds() {
-  return cachedOverviewIds;
-}
-
-module.exports = { load, getEventSettings, getEventTypes, getOverviewIds };
+module.exports = {
+  createReader,
+  load: defaultReader.load,
+  getEventSettings: defaultReader.getEventSettings,
+  getEventTypes: defaultReader.getEventTypes,
+  getOverviewIds: defaultReader.getOverviewIds,
+  getFilePath: defaultReader.getFilePath,
+};

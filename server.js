@@ -10,7 +10,8 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const multer = require('multer');
-const { parseActivities } = require('./parser');
+const parser = require('./parser');
+const { parseActivities } = parser;
 const { env, envWarnings } = require('./config/env');
 const {
   applyManualDateCorrections,
@@ -28,19 +29,36 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = env.PORT;
-const SHEET_ID = env.GOOGLE_SHEET_ID;
-const SHEET_ID_2 = env.GOOGLE_SHEET_ID_2;
 const POLL_INTERVAL = env.POLL_INTERVAL;
-const ACTIVITY_SNAPSHOT_PATH = path.join(__dirname, 'data', 'activity-snapshot.json');
-const EVENT_EXCEL_PATH = env.EVENT_EXCEL_PATH || path.join(__dirname, 'data', 'Event.xlsx');
+const DATA_DIR = path.join(__dirname, 'data');
 const EVENT_UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'uploads');
+const ENVIRONMENT_CONFIG_PATH = path.join(DATA_DIR, 'environment-config.json');
 const GOOGLE_LOGIN_ENABLED = env.GOOGLE_LOGIN_ENABLED;
 const GOOGLE_LOGIN_CLIENT_ID = env.GOOGLE_LOGIN_CLIENT_ID || env.GOOGLE_CLIENT_ID;
 const GOOGLE_ALLOWED_EMAIL_DOMAINS = appAuth.normalizeAllowedEmailDomains(env.GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS);
 const APP_SESSION_TTL_MS = env.APP_SESSION_TTL_HOURS * 60 * 60 * 1000;
 const APP_SESSION_SECRET = env.APP_SESSION_SECRET;
 
+const DEFAULT_ENVIRONMENT = 'rct';
+const DEFAULT_CONFIG_CALENDAR_SHEET = '1.0 event calendar';
+const DEFAULT_CONFIG_ACTIVITY_SHEET = '活动配置';
+const ENVIRONMENT_DEFS = Object.freeze({
+  dev: {
+    key: 'dev',
+    label: 'DEV',
+    usesGoogleSheets: false,
+    defaultEventExcelPath: 'D:\\P4\\Dev\\Excel\\Event.xlsx',
+  },
+  rct: {
+    key: 'rct',
+    label: 'RCT',
+    usesGoogleSheets: true,
+    defaultEventExcelPath: 'D:\\P4\\Branches\\RCT\\Excel\\Event.xlsx',
+  },
+});
+
 fs.mkdirSync(EVENT_UPLOAD_TMP_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
 
 envWarnings.forEach((warning) => logger.warn('config_warning', { warning }));
 
@@ -102,11 +120,8 @@ const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
 
 // --------------- Data Cache ---------------
 
-let cachedData = null;
-let cachedDataJson = null;
-let cachedCalendarRows = null;
-let cachedConfigRows = null;
-let cachedActivitiesSnapshot = [];
+const environmentRuntimeConfig = loadEnvironmentRuntimeConfig();
+const environmentStates = createEnvironmentStates();
 const runtimeState = {
   startedAt: Date.now(),
   initialLoadComplete: false,
@@ -119,6 +134,255 @@ const upload = multer({
   dest: EVENT_UPLOAD_TMP_DIR,
   limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+function loadJsonFileSafe(filePath, fallbackValue) {
+  try {
+    if (!fs.existsSync(filePath)) return fallbackValue;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    logger.warn('json_file_load_failed', { filePath, error: error.message });
+    return fallbackValue;
+  }
+}
+
+function getEnvironmentDef(envKey) {
+  return ENVIRONMENT_DEFS[envKey] || ENVIRONMENT_DEFS[DEFAULT_ENVIRONMENT];
+}
+
+function normalizeSheetIdList(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\n,\s]+/);
+
+  return parts
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function normalizeWorksheetList(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\n,，;；]+/);
+
+  return parts
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function normalizePrimarySheetSources(value) {
+  const rows = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/\r?\n/);
+
+  return rows
+    .map((row) => {
+      if (!row) return null;
+      if (typeof row === 'object' && row.spreadsheetId) {
+        const mode = String(row.mode || 'block').trim().toLowerCase() || 'block';
+        if (row.worksheet) {
+          return {
+            spreadsheetId: String(row.spreadsheetId).trim(),
+            worksheet: String(row.worksheet || '').trim(),
+            mode,
+          };
+        }
+        return normalizeWorksheetList(row.worksheets).map((worksheet) => ({
+          spreadsheetId: String(row.spreadsheetId).trim(),
+          worksheet,
+          mode,
+        }));
+      }
+
+      const raw = String(row).trim();
+      if (!raw) return null;
+      const [spreadsheetIdPart, worksheetPart, modePart] = raw.split('|');
+      const spreadsheetId = String(spreadsheetIdPart || '').trim();
+      if (!spreadsheetId) return null;
+      const mode = String(modePart || 'block').trim().toLowerCase() || 'block';
+      return normalizeWorksheetList(worksheetPart || '').map((worksheet) => ({
+        spreadsheetId,
+        worksheet,
+        mode,
+      }));
+    })
+    .flat()
+    .filter((entry) => entry && entry.spreadsheetId && entry.worksheet)
+    .filter((entry, index, list) => (
+      list.findIndex((candidate) => (
+        candidate.spreadsheetId === entry.spreadsheetId &&
+        candidate.worksheet === entry.worksheet &&
+        candidate.mode === entry.mode
+      )) === index
+    ));
+}
+
+function normalizeConfigSheetSource(value, legacySheetId) {
+  if (value && typeof value === 'object') {
+    return {
+      spreadsheetId: String(value.spreadsheetId || '').trim(),
+      calendarWorksheet: String(value.calendarWorksheet || DEFAULT_CONFIG_CALENDAR_SHEET).trim() || DEFAULT_CONFIG_CALENDAR_SHEET,
+      configWorksheet: String(value.configWorksheet || DEFAULT_CONFIG_ACTIVITY_SHEET).trim() || DEFAULT_CONFIG_ACTIVITY_SHEET,
+    };
+  }
+
+  const raw = String(value || legacySheetId || '').trim();
+  if (!raw || raw === '[object Object]') {
+    return {
+      spreadsheetId: '',
+      calendarWorksheet: DEFAULT_CONFIG_CALENDAR_SHEET,
+      configWorksheet: DEFAULT_CONFIG_ACTIVITY_SHEET,
+    };
+  }
+
+  const parts = raw.split('|');
+  return {
+    spreadsheetId: String(parts[0] || '').trim(),
+    calendarWorksheet: String(parts[1] || DEFAULT_CONFIG_CALENDAR_SHEET).trim() || DEFAULT_CONFIG_CALENDAR_SHEET,
+    configWorksheet: String(parts[2] || DEFAULT_CONFIG_ACTIVITY_SHEET).trim() || DEFAULT_CONFIG_ACTIVITY_SHEET,
+  };
+}
+
+function loadEnvironmentRuntimeConfig() {
+  const persisted = loadJsonFileSafe(ENVIRONMENT_CONFIG_PATH, {});
+  const environments = persisted.environments || {};
+
+  return {
+    environments: {
+      dev: {
+        eventExcelOverridePath: environments.dev && environments.dev.eventExcelOverridePath
+          ? String(environments.dev.eventExcelOverridePath)
+          : '',
+        primarySheetIds: [],
+        configSheetId: '',
+      },
+      rct: {
+        eventExcelOverridePath: environments.rct && environments.rct.eventExcelOverridePath
+          ? String(environments.rct.eventExcelOverridePath)
+          : '',
+        includeConfigSource: environments.rct && typeof environments.rct.includeConfigSource === 'boolean'
+          ? environments.rct.includeConfigSource
+          : true,
+        primarySheetSources: normalizePrimarySheetSources(
+          environments.rct && environments.rct.primarySheetSources
+            ? environments.rct.primarySheetSources
+            : normalizeSheetIdList(
+                environments.rct && environments.rct.primarySheetIds
+                  ? environments.rct.primarySheetIds
+                  : [env.GOOGLE_SHEET_ID].filter(Boolean)
+              )
+        ),
+        configSource: normalizeConfigSheetSource(
+          environments.rct && environments.rct.configSource,
+          (environments.rct && environments.rct.configSheetId) || env.GOOGLE_SHEET_ID_2 || ''
+        ),
+      },
+    },
+  };
+}
+
+function saveEnvironmentRuntimeConfig() {
+  fs.writeFileSync(
+    ENVIRONMENT_CONFIG_PATH,
+    JSON.stringify(environmentRuntimeConfig, null, 2),
+    'utf8'
+  );
+}
+
+function getEnvironmentRuntimeEntry(envKey) {
+  const key = getEnvironmentDef(envKey).key;
+  return environmentRuntimeConfig.environments[key];
+}
+
+function getEnvironmentSnapshotPath(envKey) {
+  return path.join(DATA_DIR, `activity-snapshot-${envKey}.json`);
+}
+
+function getEnvironmentUploadPath(envKey) {
+  return path.join(EVENT_UPLOAD_TMP_DIR, `${envKey}-Event.xlsx`);
+}
+
+function getEnvironmentEventExcelPath(envKey) {
+  const entry = getEnvironmentRuntimeEntry(envKey);
+  if (entry && entry.eventExcelOverridePath) {
+    return entry.eventExcelOverridePath;
+  }
+  return getEnvironmentDef(envKey).defaultEventExcelPath;
+}
+
+function getEnvironmentPrimarySheetIds(envKey) {
+  return getEnvironmentPrimarySheetSources(envKey)
+    .map((entry) => entry.spreadsheetId)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function getEnvironmentPrimarySheetSources(envKey) {
+  const entry = getEnvironmentRuntimeEntry(envKey);
+  return entry ? normalizePrimarySheetSources(entry.primarySheetSources) : [];
+}
+
+function getEnvironmentConfigSheetId(envKey) {
+  return getEnvironmentConfigSource(envKey).spreadsheetId;
+}
+
+function getEnvironmentConfigSource(envKey) {
+  const entry = getEnvironmentRuntimeEntry(envKey);
+  return entry
+    ? normalizeConfigSheetSource(entry.configSource)
+    : normalizeConfigSheetSource(null);
+}
+
+function shouldIncludeConfigSource(envKey) {
+  const entry = getEnvironmentRuntimeEntry(envKey);
+  return !!(entry && entry.includeConfigSource);
+}
+
+function buildEnvironmentView(envKey) {
+  const envDef = getEnvironmentDef(envKey);
+  const envState = getEnvironmentState(envKey);
+  return {
+    key: envDef.key,
+    label: envDef.label,
+    usesGoogleSheets: envDef.usesGoogleSheets,
+    eventExcelPath: getEnvironmentEventExcelPath(envKey),
+    eventExcelOverrideActive: !!getEnvironmentRuntimeEntry(envKey).eventExcelOverridePath,
+    includeConfigSource: shouldIncludeConfigSource(envKey),
+    primarySheetSources: getEnvironmentPrimarySheetSources(envKey),
+    primarySheetIds: getEnvironmentPrimarySheetIds(envKey),
+    configSource: getEnvironmentConfigSource(envKey),
+    configSheetId: getEnvironmentConfigSheetId(envKey),
+    lastReadSummary: envState ? envState.lastReadSummary : null,
+  };
+}
+
+function createEnvironmentStates() {
+  return Object.keys(ENVIRONMENT_DEFS).reduce((accumulator, envKey) => {
+    accumulator[envKey] = {
+      key: envKey,
+      excelReader: excelReader.createReader(),
+      cachedDataList: [],
+      cachedDataListJson: '',
+      cachedConfigRows: null,
+      cachedCalendarRows: null,
+      cachedActivitiesSnapshot: [],
+      lastReadSummary: null,
+    };
+    return accumulator;
+  }, {});
+}
+
+function getEnvironmentState(envKey) {
+  return environmentStates[getEnvironmentDef(envKey).key];
+}
+
+function getRequestedEnvironmentKey(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ENVIRONMENT_DEFS[normalized] ? normalized : DEFAULT_ENVIRONMENT;
+}
 
 function shouldUseSecureCookies() {
   return /^https:\/\//i.test(env.CALENDAR_PUBLIC_URL || '');
@@ -217,6 +481,12 @@ function getNextPathFromRequest(req) {
   return '/';
 }
 
+function getRequestEnvironmentKey(req) {
+  const fromQuery = req && req.query ? req.query.env : '';
+  const fromBody = req && req.body ? req.body.env : '';
+  return getRequestedEnvironmentKey(fromQuery || fromBody || DEFAULT_ENVIRONMENT);
+}
+
 function requireAuthForApi(req, res, next) {
   if (!GOOGLE_LOGIN_ENABLED) return next();
   const session = getAuthSession(req);
@@ -276,33 +546,41 @@ async function verifyGoogleCredential(credential) {
   };
 }
 
-function loadActivitySnapshotFromDisk() {
+function loadActivitySnapshotFromDisk(envKey) {
+  const envState = getEnvironmentState(envKey);
+  const snapshotPath = getEnvironmentSnapshotPath(envKey);
   try {
-    if (!fs.existsSync(ACTIVITY_SNAPSHOT_PATH)) return;
-    const raw = fs.readFileSync(ACTIVITY_SNAPSHOT_PATH, 'utf8');
+    if (!fs.existsSync(snapshotPath)) return;
+    const raw = fs.readFileSync(snapshotPath, 'utf8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      cachedActivitiesSnapshot = parsed;
-      logger.info('activity_snapshot_loaded', { count: parsed.length });
+      envState.cachedActivitiesSnapshot = parsed;
+      logger.info('activity_snapshot_loaded', { environment: envKey, count: parsed.length });
     }
   } catch (err) {
-    logger.error('activity_snapshot_load_failed', { error: err.message });
+    logger.error('activity_snapshot_load_failed', { environment: envKey, error: err.message });
   }
 }
 
-function saveActivitySnapshot(activities, reason) {
+function saveActivitySnapshot(envKey, activities, reason) {
+  const envState = getEnvironmentState(envKey);
+  const snapshotPath = getEnvironmentSnapshotPath(envKey);
   if (!Array.isArray(activities) || activities.length === 0) return;
   try {
-    fs.mkdirSync(path.dirname(ACTIVITY_SNAPSHOT_PATH), { recursive: true });
-    fs.writeFileSync(ACTIVITY_SNAPSHOT_PATH, JSON.stringify(activities), 'utf8');
-    cachedActivitiesSnapshot = activities;
+    fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+    fs.writeFileSync(snapshotPath, JSON.stringify(activities), 'utf8');
+    envState.cachedActivitiesSnapshot = activities;
     runtimeState.lastSnapshotReason = reason || '';
     if (reason) {
-      logger.info('activity_snapshot_updated', { count: activities.length, reason });
+      logger.info('activity_snapshot_updated', { environment: envKey, count: activities.length, reason });
     }
   } catch (err) {
-    logger.error('activity_snapshot_save_failed', { error: err.message });
+    logger.error('activity_snapshot_save_failed', { environment: envKey, error: err.message });
   }
+}
+
+function countSheetRows(sheetsMap) {
+  return Object.values(sheetsMap || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
 }
 
 async function getSheetNames(spreadsheetId) {
@@ -329,56 +607,196 @@ async function fetchSpreadsheet(spreadsheetId, sheetFilter) {
   return result;
 }
 
-async function fetchAllSheets() {
-  return fetchSpreadsheet(SHEET_ID);
+async function fetchPrimarySheetsForEnvironment(envKey) {
+  const envDef = getEnvironmentDef(envKey);
+  if (!envDef.usesGoogleSheets) return [];
+
+  const sheetIds = getEnvironmentPrimarySheetIds(envKey);
+  if (sheetIds.length === 0) return [];
+
+  return Promise.all(
+    sheetIds.map(async (spreadsheetId) => ({
+      spreadsheetId,
+      data: await fetchSpreadsheet(spreadsheetId),
+    }))
+  );
 }
 
-async function fetchSheet2Data() {
-  if (!SHEET_ID_2) return { calendarRows: null, configRows: null };
+async function fetchConfigSheetsForEnvironment(envKey) {
+  const configSheetId = getEnvironmentConfigSheetId(envKey);
+  if (!configSheetId) return { calendarRows: null, configRows: null };
+
   try {
-    const targets = ['1.0 event calendar', '活动配置'];
-    const data = await fetchSpreadsheet(SHEET_ID_2, (n) => targets.includes(n));
+    const targets = ['1.0 event calendar', '娲诲姩閰嶇疆'];
+    const data = await fetchSpreadsheet(configSheetId, (name) => targets.includes(name));
     return {
       calendarRows: data.sheets['1.0 event calendar'] || null,
-      configRows: data.sheets['活动配置'] || null,
+      configRows: data.sheets['娲诲姩閰嶇疆'] || null,
     };
   } catch (err) {
-    logger.error('sheet2_fetch_failed', { error: err.message });
+    logger.error('sheet2_fetch_failed', { environment: envKey, error: err.message });
+    return { calendarRows: null, configRows: null };
+  }
+}
+
+function normalizeWorksheetList(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '').split(/\r?\n|[,;]+/);
+
+  return parts
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+async function fetchPrimarySheetsForEnvironment(envKey) {
+  const envDef = getEnvironmentDef(envKey);
+  if (!envDef.usesGoogleSheets) return [];
+
+  const sources = getEnvironmentPrimarySheetSources(envKey);
+  if (sources.length === 0) return [];
+
+  const groupedSources = sources.reduce((accumulator, source) => {
+    if (!accumulator[source.spreadsheetId]) accumulator[source.spreadsheetId] = [];
+    accumulator[source.spreadsheetId].push(source);
+    return accumulator;
+  }, {});
+
+  return Promise.all(
+    Object.entries(groupedSources).map(async ([spreadsheetId, sourceEntries]) => ({
+      spreadsheetId,
+      sourceEntries,
+      data: await fetchSpreadsheet(
+        spreadsheetId,
+        (name) => sourceEntries.some((entry) => entry.worksheet === name)
+      ),
+      sheetModes: sourceEntries.reduce((accumulator, entry) => {
+        accumulator[entry.worksheet] = entry.mode || 'block';
+        return accumulator;
+      }, {}),
+    }))
+  );
+}
+
+async function fetchConfigSheetsForEnvironment(envKey) {
+  const configSource = getEnvironmentConfigSource(envKey);
+  if (!configSource.spreadsheetId) return { calendarRows: null, configRows: null };
+
+  try {
+    const targets = [configSource.calendarWorksheet, configSource.configWorksheet].filter(Boolean);
+    const data = await fetchSpreadsheet(
+      configSource.spreadsheetId,
+      targets.length > 0 ? (name) => targets.includes(name) : null
+    );
+    return {
+      calendarRows: data.sheets[configSource.calendarWorksheet] || null,
+      configRows: data.sheets[configSource.configWorksheet] || null,
+    };
+  } catch (err) {
+    logger.error('sheet2_fetch_failed', { environment: envKey, error: err.message });
     return { calendarRows: null, configRows: null };
   }
 }
 
 // --------------- Polling ---------------
 
-async function poll() {
+async function pollEnvironment(envKey) {
+  const envState = getEnvironmentState(envKey);
+  const envDef = getEnvironmentDef(envKey);
+  const includeConfigSource = shouldIncludeConfigSource(envKey);
+
   try {
-    const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
-    const json = JSON.stringify(data);
+    envState.excelReader.load(getEnvironmentEventExcelPath(envKey));
+    envState.lastReadSummary = {
+      environment: envKey,
+      usesGoogleSheets: envDef.usesGoogleSheets,
+      includeConfigSource,
+      eventExcelPath: getEnvironmentEventExcelPath(envKey),
+      eventSettingsCount: envState.excelReader.getEventSettings().length,
+      primarySources: [],
+      primaryRowCount: 0,
+      configSource: null,
+      configRowCount: 0,
+      configCalendarRowCount: 0,
+    };
 
-    // Keep last successful Sheet 2 snapshot when quota/network errors happen.
-    if (sheet2.calendarRows) cachedCalendarRows = sheet2.calendarRows;
-    if (sheet2.configRows) cachedConfigRows = sheet2.configRows;
+    let nextDataList = [];
+    if (envDef.usesGoogleSheets) {
+      const [dataList, sheet2] = await Promise.all([
+        fetchPrimarySheetsForEnvironment(envKey),
+        includeConfigSource
+          ? fetchConfigSheetsForEnvironment(envKey)
+          : Promise.resolve({ calendarRows: null, configRows: null }),
+      ]);
 
-    if (json !== cachedDataJson) {
-      cachedData = data;
-      cachedDataJson = json;
-      const typedActivities = buildTypedActivities();
-      saveActivitySnapshot(typedActivities, 'poll');
-      const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
+      nextDataList = dataList;
+      envState.cachedCalendarRows = sheet2.calendarRows || null;
+      envState.cachedConfigRows = sheet2.configRows || null;
+      envState.lastReadSummary.primarySources = dataList.map((entry) => ({
+        spreadsheetId: entry.spreadsheetId,
+        requestedSheets: entry.sourceEntries || [],
+        sheetNames: entry.data && Array.isArray(entry.data.sheetNames) ? entry.data.sheetNames : [],
+        rowCount: countSheetRows(entry.data && entry.data.sheets),
+      }));
+      envState.lastReadSummary.primaryRowCount = envState.lastReadSummary.primarySources.reduce(
+        (sum, entry) => sum + entry.rowCount,
+        0
+      );
+      if (includeConfigSource) {
+        const configSource = getEnvironmentConfigSource(envKey);
+        envState.lastReadSummary.configSource = {
+          spreadsheetId: configSource.spreadsheetId,
+          calendarWorksheet: configSource.calendarWorksheet,
+          configWorksheet: configSource.configWorksheet,
+        };
+        envState.lastReadSummary.configCalendarRowCount = Array.isArray(sheet2.calendarRows) ? sheet2.calendarRows.length : 0;
+        envState.lastReadSummary.configRowCount = Array.isArray(sheet2.configRows) ? sheet2.configRows.length : 0;
+      }
+    } else {
+      envState.cachedCalendarRows = null;
+      envState.cachedConfigRows = null;
+    }
+
+    const previousDataJson = envState.cachedDataListJson;
+    const previousActivitiesJson = JSON.stringify(envState.cachedActivitiesSnapshot || []);
+    envState.cachedDataList = nextDataList;
+    envState.cachedDataListJson = JSON.stringify(nextDataList);
+
+    const typedActivities = buildTypedActivities(envKey);
+    const nextActivitiesJson = JSON.stringify(typedActivities);
+
+    if (envState.cachedDataListJson !== previousDataJson || nextActivitiesJson !== previousActivitiesJson) {
+      saveActivitySnapshot(envKey, typedActivities, 'poll');
+      const totalRows = nextDataList.reduce(
+        (sum, entry) => sum + Object.values(entry.data.sheets).reduce((rowSum, rows) => rowSum + rows.length, 0),
+        0
+      );
+
       logger.info('sheet_poll_changed', {
-        sheetCount: data.sheetNames.length,
+        environment: envKey,
+        spreadsheetCount: nextDataList.length,
         totalRows,
         clients: io.engine.clientsCount,
       });
-      io.emit('sheet:update', cachedData);
-      triggerAlphaSync();
+      io.emit('sheet:update', { environment: envKey });
+      if (envKey === 'rct') {
+        triggerAlphaSync();
+      }
     }
+
     runtimeState.lastPollSuccessAt = new Date().toISOString();
     runtimeState.lastPollError = '';
   } catch (err) {
     runtimeState.lastPollError = err.message;
-    logger.error('sheet_poll_failed', { error: err.message });
+    logger.error('sheet_poll_failed', { environment: envKey, error: err.message });
   }
+}
+
+async function poll() {
+  await Promise.all(
+    Object.keys(ENVIRONMENT_DEFS).map((envKey) => pollEnvironment(envKey))
+  );
 }
 
 // --------------- SeaTalk Bot Callback ---------------
@@ -447,14 +865,23 @@ app.post('/callback', collectRawBody, (req, res) => {
 // --------------- Static Files & REST API ---------------
 
 function buildHealthPayload() {
+  const snapshotCounts = Object.keys(environmentStates).reduce((accumulator, envKey) => {
+    accumulator[envKey] = getEnvironmentState(envKey).cachedActivitiesSnapshot.length;
+    return accumulator;
+  }, {});
+  const cachedSheetCounts = Object.keys(environmentStates).reduce((accumulator, envKey) => {
+    accumulator[envKey] = getEnvironmentState(envKey).cachedDataList.length;
+    return accumulator;
+  }, {});
+
   return {
     status: 'ok',
     version: packageInfo.version,
     uptimeSeconds: Math.floor(process.uptime()),
     startedAt: new Date(runtimeState.startedAt).toISOString(),
     pollIntervalMs: POLL_INTERVAL,
-    snapshotActivities: cachedActivitiesSnapshot.length,
-    cachedSheetCount: cachedData ? cachedData.sheetNames.length : 0,
+    snapshotActivities: snapshotCounts,
+    cachedSheetCount: cachedSheetCounts,
     lastPollSuccessAt: runtimeState.lastPollSuccessAt,
     lastPollError: runtimeState.lastPollError || null,
     initialLoadComplete: runtimeState.initialLoadComplete,
@@ -462,7 +889,9 @@ function buildHealthPayload() {
 }
 
 function isReady() {
-  return runtimeState.initialLoadComplete || cachedActivitiesSnapshot.length > 0;
+  return runtimeState.initialLoadComplete || Object.keys(environmentStates).some(
+    (envKey) => getEnvironmentState(envKey).cachedActivitiesSnapshot.length > 0
+  );
 }
 
 app.get('/healthz', (_req, res) => {
@@ -553,11 +982,61 @@ app.post('/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/shared', express.static(path.join(__dirname, 'shared')));
-app.use(express.static(path.join(__dirname, 'public')));
+const staticAssetOptions = {
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  },
+};
 
-app.get('/api/data', requireAuthForApi, (_req, res) => {
-  res.json({ data: cachedData });
+app.use('/shared', express.static(path.join(__dirname, 'shared'), staticAssetOptions));
+app.use(express.static(path.join(__dirname, 'public'), staticAssetOptions));
+
+app.get('/api/data', requireAuthForApi, (req, res) => {
+  const envKey = getRequestEnvironmentKey(req);
+  const envState = getEnvironmentState(envKey);
+  res.json({
+    environment: buildEnvironmentView(envKey),
+    data: envState.cachedDataList,
+  });
+});
+
+app.get('/api/environment-config', requireAuthForApi, (req, res) => {
+  const envKey = getRequestEnvironmentKey(req);
+  res.json({
+    environment: buildEnvironmentView(envKey),
+  });
+});
+
+app.post('/api/environment-config', requireAuthForApi, express.json({ limit: '256kb' }), async (req, res) => {
+  const envKey = getRequestEnvironmentKey(req);
+  const envDef = getEnvironmentDef(envKey);
+
+  if (!envDef.usesGoogleSheets) {
+    return res.status(400).json({ error: 'google_sheet_config_not_supported_for_environment' });
+  }
+
+  const primarySheetSources = normalizePrimarySheetSources(req.body && req.body.primarySheetSources);
+  const configSource = normalizeConfigSheetSource(req.body && req.body.configSource);
+  const includeConfigSource = !(
+    req.body &&
+    Object.prototype.hasOwnProperty.call(req.body, 'includeConfigSource') &&
+    !req.body.includeConfigSource
+  );
+  const runtimeEntry = getEnvironmentRuntimeEntry(envKey);
+  runtimeEntry.primarySheetSources = primarySheetSources;
+  runtimeEntry.configSource = configSource;
+  runtimeEntry.includeConfigSource = includeConfigSource;
+  saveEnvironmentRuntimeConfig();
+
+  await pollEnvironment(envKey);
+
+  res.json({
+    ok: true,
+    environment: buildEnvironmentView(envKey),
+    activities: buildTypedActivities(envKey).length,
+  });
 });
 
 app.post('/api/seatalk-push', (req, res) => {
@@ -667,16 +1146,16 @@ function isWebActivity(...fields) {
   return combined.includes('h5') || combined.includes('网页');
 }
 
-function classifyUntyped(eventId, excelName, excelTxtName, gsName, gsCategory) {
-  const overviewIds = excelReader.getOverviewIds();
+function classifyUntyped(envState, eventId, excelName, excelTxtName, gsName, gsCategory) {
+  const overviewIds = envState.excelReader.getOverviewIds();
   if (overviewIds.has(eventId)) return ['仅说明页活动'];
   if (isWebActivity(excelName, excelTxtName, gsName, gsCategory)) return ['网页活动'];
   return ['其他活动'];
 }
 
-function attachEventTypes(activities) {
-  const settings = excelReader.getEventSettings();
-  const typeMap = excelReader.getEventTypes();
+function attachEventTypes(envState, activities) {
+  const settings = envState.excelReader.getEventSettings();
+  const typeMap = envState.excelReader.getEventTypes();
   if (settings.length === 0) return activities;
   const result = [];
   for (const a of activities) {
@@ -729,7 +1208,7 @@ function attachEventTypes(activities) {
           types:
             matchedTypes.length > 0
               ? matchedTypes
-              : classifyUntyped(s.eventId, s.note, s.name, a.name, a.category),
+              : classifyUntyped(envState, s.eventId, s.note, s.name, a.name, a.category),
         });
       }
       continue;
@@ -746,7 +1225,7 @@ function attachEventTypes(activities) {
         types:
           matchedTypes.length > 0
             ? matchedTypes
-            : classifyUntyped(bestMatch.eventId, bestMatch.note, bestMatch.name, a.name, a.category),
+            : classifyUntyped(envState, bestMatch.eventId, bestMatch.note, bestMatch.name, a.name, a.category),
       });
       continue;
     }
@@ -767,8 +1246,8 @@ function attachEventTypes(activities) {
   return dedup;
 }
 
-function supplementWeekendSupply(activities) {
-  const settings = excelReader.getEventSettings();
+function supplementWeekendSupply(envState, activities) {
+  const settings = envState.excelReader.getEventSettings();
   const weekendEntries = settings.filter((s) => {
     if (!s.note.includes('周末幸运补给') || !s.startDate || s.startDate < '2025-09-01') return false;
     if (!s.endDate) return false;
@@ -805,40 +1284,85 @@ function supplementWeekendSupply(activities) {
   return activities;
 }
 
-function buildTypedActivities() {
-  if (!cachedData) {
-    let fallback = Array.isArray(cachedActivitiesSnapshot) ? cachedActivitiesSnapshot : [];
-    fallback = fallback.filter((a) => !isExcludedActivityName((a && a.name) || ''));
+function buildActivitiesFromExcelOnly(envState) {
+  const settings = envState.excelReader.getEventSettings();
+  const typeMap = envState.excelReader.getEventTypes();
+  return settings.map((setting) => {
+    const eventId = setting.eventId;
+    const excelName = setting.note || setting.name || '';
+    const matchedTypes = typeMap[eventId] || [];
+    return {
+      name: excelName || `Event ${eventId}`,
+      source: 'EventSetting',
+      category: 'Event.xlsx',
+      startDate: setting.startDate || null,
+      endDate: setting.endDate || setting.startDate || null,
+      rewards: [],
+      eventId,
+      excelName,
+      types: matchedTypes.length > 0
+        ? matchedTypes
+        : classifyUntyped(envState, eventId, setting.note, setting.name, excelName, 'Event.xlsx'),
+    };
+  });
+}
+
+function buildTypedActivities(envKey) {
+  const envState = getEnvironmentState(envKey);
+  const envDef = getEnvironmentDef(envKey);
+
+  if (!envDef.usesGoogleSheets) {
+    let activities = buildActivitiesFromExcelOnly(envState);
+    activities = activities.filter((activity) => !isExcludedActivityName(activity.name || ''));
+    activities = applyManualDateCorrections(activities);
+    if (activities.length > 0) envState.cachedActivitiesSnapshot = activities;
+    return activities;
+  }
+
+  if (!envState.cachedDataList || envState.cachedDataList.length === 0) {
+    let fallback = Array.isArray(envState.cachedActivitiesSnapshot) ? envState.cachedActivitiesSnapshot : [];
+    fallback = fallback.filter((activity) => !isExcludedActivityName((activity && activity.name) || ''));
     fallback = applyManualDateCorrections(fallback);
     return fallback;
   }
-  let activities = parseActivities(cachedData, cachedCalendarRows, cachedConfigRows);
-  activities = activities.filter((a) => !isExcludedActivityName(a.name || ''));
+
+  let activities = [];
+  envState.cachedDataList.forEach((entry) => {
+    activities = activities.concat(
+      parseActivities(entry.data, null, null, {
+        sheetModes: entry.sheetModes || {},
+      })
+    );
+  });
+
+  if (shouldIncludeConfigSource(envKey)) {
+    activities = parseActivities(
+      { sheetNames: [], sheets: {} },
+      envState.cachedCalendarRows,
+      envState.cachedConfigRows,
+      { baseActivities: activities }
+    );
+  }
+
+  activities = activities.filter((activity) => !isExcludedActivityName(activity.name || ''));
   activities = applyManualDateCorrections(activities);
-  activities = supplementWeekendSupply(activities);
-  activities = attachEventTypes(activities);
-  if (activities.length > 0) cachedActivitiesSnapshot = activities;
+  activities = supplementWeekendSupply(envState, activities);
+  activities = attachEventTypes(envState, activities);
+  if (activities.length > 0) envState.cachedActivitiesSnapshot = activities;
   return activities;
 }
 
 /** 与网页一致：先拉取最新 Sheets，再读同一套 /api/calendar JSON */
 async function activitiesForSeaTalkPush() {
   await poll();
-  const localBase = `http://127.0.0.1:${PORT}`;
-  try {
-    const acts = await seatalkBot.fetchCalendarActivities(localBase);
-    if (acts && acts.length > 0) return acts;
-  } catch (err) {
-    console.warn('[SeaTalk] fetchCalendarActivities fallback:', err.message);
-  }
-  return buildTypedActivities();
+  return buildTypedActivities('rct');
 }
 
 function triggerAlphaSync() {
   const apiKey = env.ALPHA_KNOWLEDGE_API_KEY;
   if (!apiKey) return;
   try {
-    const activities = buildTypedActivities();
+    const activities = buildTypedActivities('rct');
     const expertId = env.ALPHA_KNOWLEDGE_EXPERT_ID || '7420';
     const citationURL = env.ALPHA_KNOWLEDGE_CITATION_URL || '';
     alphaSync.sync(activities, apiKey, expertId, citationURL);
@@ -880,12 +1404,14 @@ async function pushDailyCalendarImageToGroup() {
   }
 }
 
-function triggerUiRefreshAfterExcelReload(reason) {
+function triggerUiRefreshAfterExcelReload(envKey, reason) {
   try {
-    const typed = buildTypedActivities();
-    saveActivitySnapshot(typed, reason || 'event-reload');
-    io.emit('sheet:update', cachedData);
-    triggerAlphaSync();
+    const typed = buildTypedActivities(envKey);
+    saveActivitySnapshot(envKey, typed, reason || 'event-reload');
+    io.emit('sheet:update', { environment: envKey });
+    if (envKey === 'rct') {
+      triggerAlphaSync();
+    }
     console.log(
       `[excel-reader] Reload triggered by ${reason} – pushing update to ${io.engine.clientsCount} client(s)`
     );
@@ -898,10 +1424,14 @@ function isExcelFilename(name) {
   return /\.xlsx$/i.test(String(name || ''));
 }
 
-app.get('/api/calendar', requireAuthForApi, (_req, res) => {
+app.get('/api/calendar', requireAuthForApi, (req, res) => {
   try {
-    const activities = buildTypedActivities();
-    res.json({ activities });
+    const envKey = getRequestEnvironmentKey(req);
+    const activities = buildTypedActivities(envKey);
+    res.json({
+      environment: buildEnvironmentView(envKey),
+      activities,
+    });
   } catch (err) {
     console.error('Calendar parse error:', err.message);
     res.status(500).json({ error: err.message });
@@ -909,6 +1439,8 @@ app.get('/api/calendar', requireAuthForApi, (_req, res) => {
 });
 
 app.post('/api/event-upload', requireAuthForApi, upload.single('eventFile'), (req, res) => {
+  const envKey = getRequestEnvironmentKey(req);
+  const envState = getEnvironmentState(envKey);
   if (!req.file) return res.status(400).json({ error: '请先选择 Event.xlsx 文件' });
 
   const originalName = req.file.originalname || '';
@@ -918,15 +1450,20 @@ app.post('/api/event-upload', requireAuthForApi, upload.single('eventFile'), (re
   }
 
   try {
-    fs.mkdirSync(path.dirname(EVENT_EXCEL_PATH), { recursive: true });
-    fs.renameSync(req.file.path, EVENT_EXCEL_PATH);
-    excelReader.load(EVENT_EXCEL_PATH);
-    triggerUiRefreshAfterExcelReload('manual Event.xlsx upload');
-    const activities = buildTypedActivities();
+    const uploadPath = getEnvironmentUploadPath(envKey);
+    const runtimeEntry = getEnvironmentRuntimeEntry(envKey);
+    fs.mkdirSync(path.dirname(uploadPath), { recursive: true });
+    fs.renameSync(req.file.path, uploadPath);
+    runtimeEntry.eventExcelOverridePath = uploadPath;
+    saveEnvironmentRuntimeConfig();
+    envState.excelReader.load(uploadPath);
+    triggerUiRefreshAfterExcelReload(envKey, 'manual Event.xlsx upload');
+    const activities = buildTypedActivities(envKey);
     return res.json({
       ok: true,
       message: 'Event 表上传成功，活动数据已刷新',
       file: originalName,
+      environment: envKey,
       activities: activities.length,
     });
   } catch (err) {
@@ -954,9 +1491,7 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log(`Client connected  (id: ${socket.id})`);
 
-  if (cachedData) {
-    socket.emit('sheet:update', cachedData);
-  }
+  socket.emit('sheet:update', { environment: DEFAULT_ENVIRONMENT });
 
   socket.on('disconnect', () => {
     console.log(`Client disconnected (id: ${socket.id})`);
@@ -972,25 +1507,22 @@ server.listen(PORT, '0.0.0.0', async () => {
     node: process.version,
   });
 
-  loadActivitySnapshotFromDisk();
-  excelReader.load(EVENT_EXCEL_PATH);
+  Object.keys(ENVIRONMENT_DEFS).forEach((envKey) => {
+    loadActivitySnapshotFromDisk(envKey);
+    getEnvironmentState(envKey).excelReader.load(getEnvironmentEventExcelPath(envKey));
+  });
 
   try {
-    const [data, sheet2] = await Promise.all([fetchAllSheets(), fetchSheet2Data()]);
-    cachedData = data;
-    cachedDataJson = JSON.stringify(data);
-    cachedCalendarRows = sheet2.calendarRows;
-    cachedConfigRows = sheet2.configRows;
-    saveActivitySnapshot(buildTypedActivities(), 'initial-load');
-    const totalRows = Object.values(data.sheets).reduce((s, rows) => s + rows.length, 0);
+    await poll();
     runtimeState.initialLoadComplete = true;
     runtimeState.lastPollSuccessAt = new Date().toISOString();
     runtimeState.lastPollError = '';
     logger.info('initial_data_loaded', {
-      sheetCount: data.sheetNames.length,
-      totalRows,
-      calendarRows: sheet2.calendarRows ? sheet2.calendarRows.length : 0,
-      configRows: sheet2.configRows ? sheet2.configRows.length : 0,
+      environments: Object.keys(ENVIRONMENT_DEFS).map((envKey) => ({
+        key: envKey,
+        activities: getEnvironmentState(envKey).cachedActivitiesSnapshot.length,
+        spreadsheets: getEnvironmentState(envKey).cachedDataList.length,
+      })),
     });
   } catch (err) {
     runtimeState.lastPollError = err.message;

@@ -18,6 +18,9 @@
 
   function initEventUploadPanel(options) {
     var settings = options || {};
+    var getEnvironment = typeof settings.getEnvironment === 'function'
+      ? settings.getEnvironment
+      : function () { return 'rct'; };
     var form = document.getElementById('event-upload-form');
     if (!form) return;
 
@@ -47,7 +50,7 @@
       status.textContent = '上传中，请稍候...';
       status.className = 'upload-status';
 
-      fetch('/api/event-upload', {
+      fetch('/api/event-upload?env=' + encodeURIComponent(getEnvironment()), {
         method: 'POST',
         body: formData,
         headers: {

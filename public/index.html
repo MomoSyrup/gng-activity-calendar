@@ -34,6 +34,8 @@
       </div>
     </header>
 
+    <section class="environment-switcher" id="environment-switcher"></section>
+
     <nav class="tabs" id="tabs"></nav>
 
     <section class="auth-gate" id="auth-gate" hidden>
@@ -136,6 +138,52 @@
       </div>
 
       <div class="config-check-view" id="config-check-view" style="display:none">
+        <div class="ops-panel environment-config-panel">
+          <div class="environment-config-head">
+            <h3>Environment Data Source</h3>
+            <p id="environment-config-summary" class="event-upload-desc"></p>
+          </div>
+          <div id="rct-sheet-config" hidden>
+            <label class="command-field environment-config-field" for="rct-primary-sheet-ids">
+              <span>RCT activity spreadsheet + worksheet list</span>
+              <textarea id="rct-primary-sheet-ids" rows="5" placeholder="One source per line: spreadsheetId|worksheetName|block-or-gantt"></textarea>
+            </label>
+            <div class="environment-config-help">
+              <p><strong>Format:</strong> <code>spreadsheetId|worksheetName|mode</code></p>
+              <p><strong>Modes:</strong> <code>block</code> for normal activity sheets, <code>gantt</code> for schedule-style sheets.</p>
+              <p><strong>Examples:</strong></p>
+              <pre>1AYYlw7ZWhNc3K7bjKDwqckOpHGDSY94ecRu0D_tZ8UM|活跃活动排期|gantt
+1abcExampleSheetId|活动总表|block</pre>
+            </div>
+            <label class="command-field environment-config-field" for="rct-config-sheet-id">
+              <span>RCT config spreadsheet ID</span>
+              <input id="rct-config-sheet-id" type="text" placeholder="Optional sheet ID for 1.0 event calendar / 活动配置" />
+            </label>
+            <label class="command-field environment-config-field" for="rct-calendar-sheet-name">
+              <span>RCT calendar worksheet name</span>
+              <input id="rct-calendar-sheet-name" type="text" placeholder="Default: 1.0 event calendar" />
+            </label>
+            <label class="command-field environment-config-field" for="rct-config-sheet-name">
+              <span>RCT config worksheet name</span>
+              <input id="rct-config-sheet-name" type="text" placeholder="Default: 活动配置" />
+            </label>
+            <label class="command-field environment-config-field environment-config-toggle" for="rct-include-config-source">
+              <span>RCT config merge mode</span>
+              <span><input id="rct-include-config-source" type="checkbox" checked /> Include config spreadsheet in final activity merge</span>
+            </label>
+            <div class="command-actions environment-config-actions">
+              <button class="command-secondary" id="rct-sheet-config-save" type="button">Save RCT Source Rules</button>
+              <p id="rct-sheet-config-status" class="upload-status"></p>
+            </div>
+          </div>
+        </div>
+        <div class="ops-panel environment-config-panel">
+          <div class="environment-config-head">
+            <h3>Read Debug</h3>
+            <p id="environment-read-debug-summary" class="event-upload-desc"></p>
+          </div>
+          <div id="environment-read-debug" class="environment-read-debug"></div>
+        </div>
         <div class="event-upload-panel event-upload-panel-priority">
           <h3>Event 表手动同步</h3>
           <p class="event-upload-desc">

@@ -196,6 +196,46 @@ function cleanGanttLine(line) {
   return name;
 }
 
+function extractTitleName(text) {
+  if (!text) return '';
+  const normalized = String(text).replace(/\r/g, '\n');
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] || normalized.trim();
+  return firstLine.replace(/[（(].*$/, '').trim();
+}
+
+function parseDateToken(text) {
+  const match = String(text || '').match(/(\d{1,2})\/(\d{1,2})/);
+  if (!match) return null;
+  return {
+    month: parseInt(match[1], 10),
+    day: parseInt(match[2], 10),
+  };
+}
+
+function detectGanttProfile(calendarRows) {
+  const headerRow = calendarRows[0] || [];
+  if (String(headerRow[0] || '').trim() === '活动类型' && String(headerRow[1] || '').trim() === '活动名称') {
+    return {
+      kind: 'tabular',
+      dateRowIndex: 1,
+      columnStart: 3,
+      rowStart: 2,
+      nameColumnIndex: 1,
+      categoryColumnIndex: 0,
+    };
+  }
+
+  return {
+    kind: 'classic',
+    dateRowIndex: 3,
+    columnStart: GANTT_COLUMN_START,
+    rowsToParse: GANTT_ROWS_TO_PARSE,
+    nameColumnIndex: null,
+    categoryColumnIndex: 0,
+  };
+}
+
 function ganttCellName(text) {
   if (!text) return '';
   return cleanGanttLine(text.split('\n')[0]);
@@ -258,38 +298,65 @@ function preferChineseNames(names) {
 function parseCalendarGantt(calendarRows, options) {
   if (!calendarRows || calendarRows.length < 5) return [];
   const settings = options || {};
-
-  const dateRow = calendarRows[3];
+  const profile = detectGanttProfile(calendarRows);
+  const dateRowIndex = typeof settings.dateRowIndex === 'number' ? settings.dateRowIndex : profile.dateRowIndex;
+  const columnStart = typeof settings.columnStart === 'number' ? settings.columnStart : profile.columnStart;
+  const dateRow = calendarRows[dateRowIndex];
   if (!dateRow) return [];
 
   const colToDate = {};
-  for (let ci = GANTT_COLUMN_START; ci < dateRow.length; ci++) {
-    const cell = String(dateRow[ci] || '').trim();
-    const m = cell.match(/^(\d{1,2})\/(\d{1,2})$/);
-    if (m) {
-      const month = parseInt(m[1], 10);
-      const day = parseInt(m[2], 10);
-      colToDate[ci] = resolveGanttDate(month, day, settings.referenceDate);
+  for (let ci = columnStart; ci < dateRow.length; ci++) {
+    const token = parseDateToken(dateRow[ci]);
+    if (token) {
+      colToDate[ci] = resolveGanttDate(token.month, token.day, settings.referenceDate);
     }
   }
 
   const results = [];
 
-  for (const r of GANTT_ROWS_TO_PARSE) {
+  if (profile.kind === 'tabular') {
+    let lastCategory = '';
+    for (let r = profile.rowStart; r < calendarRows.length; r++) {
+      const row = calendarRows[r];
+      if (!row) continue;
+
+      const rawName = extractTitleName(row[profile.nameColumnIndex]);
+      const category = String(row[profile.categoryColumnIndex] || '').trim() || lastCategory;
+      if (String(row[profile.categoryColumnIndex] || '').trim()) lastCategory = String(row[profile.categoryColumnIndex] || '').trim();
+      if (!rawName || !/[\u4e00-\u9fff]/.test(rawName) || rawName.length < 2) continue;
+
+      for (let ci = columnStart; ci < row.length; ci++) {
+        const raw = String(row[ci] || '').trim();
+        if (!raw || !colToDate[ci]) continue;
+        const explicitDates = allDates([raw]);
+        const startDate = explicitDates[0] || colToDate[ci] || null;
+        const endDate = explicitDates[1] || addDays(colToDate[ci], 6);
+        results.push({
+          name: rawName,
+          source: '1.0 event calendar',
+          category,
+          startDate,
+          endDate,
+          rewards: [],
+        });
+      }
+    }
+    return results;
+  }
+
+  for (const r of profile.rowsToParse) {
     if (r >= calendarRows.length) continue;
     const row = calendarRows[r];
     if (!row) continue;
 
     const category = String(row[0] || '').trim();
 
-    // Collect all non-empty cells in the calendar area
     const cells = [];
-    for (let ci = GANTT_COLUMN_START; ci < row.length; ci++) {
+    for (let ci = columnStart; ci < row.length; ci++) {
       const raw = String(row[ci] || '').trim();
       if (raw) cells.push({ col: ci, raw });
     }
 
-    // Each cell = one or more activities; end date = day before next cell
     for (let i = 0; i < cells.length; i++) {
       const { col, raw } = cells[i];
       const names = ganttCellNames(raw);
@@ -304,9 +371,7 @@ function parseCalendarGantt(calendarRows, options) {
         if (startDate) endDate = addDays(startDate, 13);
       }
 
-      // Filter skipped names
       const validNames = names.filter(n => !GANTT_SKIP.has(n.toLowerCase()) && !GANTT_SKIP_RE.test(n));
-      // Within the same cell, prefer Chinese name over English when they're aliases
       const finalNames = preferChineseNames(validNames);
       for (const name of finalNames) {
         results.push({ name, source: '1.0 event calendar', category, startDate, endDate, rewards: [] });
@@ -397,14 +462,32 @@ function mergeCnEnDuplicates(activities) {
   return activities.filter((_, idx) => !removed.has(idx));
 }
 
-function parseActivities(sheetsData, calendarRows, configRows) {
-  const activities = [];
+function parseActivities(sheetsData, calendarRows, configRows, options) {
+  const settings = options || {};
+  const sheetModes = settings.sheetModes || {};
+  const ganttOptions = settings.ganttOptions || {};
+  const activities = Array.isArray(settings.baseActivities)
+    ? settings.baseActivities.map((activity) => ({
+        ...activity,
+        rewards: Array.isArray(activity && activity.rewards) ? activity.rewards.slice() : [],
+      }))
+    : [];
   const skip = new Set(['item表参照', '2D资源ID', '活动奖励模板（施工中）', '周末大金UP']);
 
   for (const sheetName of sheetsData.sheetNames) {
     if (skip.has(sheetName)) continue;
     const rows = sheetsData.sheets[sheetName];
     if (!rows || rows.length < 2) continue;
+    const mode = String(sheetModes[sheetName] || 'block').trim().toLowerCase();
+    if (mode === 'gantt') {
+      activities.push(
+        ...parseCalendarGantt(rows, ganttOptions).map((activity) => ({
+          ...activity,
+          source: sheetName,
+        }))
+      );
+      continue;
+    }
     activities.push(...parseSheet(rows, sheetName));
   }
 
@@ -668,5 +751,7 @@ module.exports = {
   parseActivities,
   _internal: {
     parseCalendarGantt,
+    parseSheet,
+    parseConfigSheet,
   },
 };
