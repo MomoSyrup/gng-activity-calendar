@@ -31,6 +31,12 @@
     form.addEventListener('submit', function (event) {
       event.preventDefault();
 
+      if (typeof settings.canManageData === 'function' && !settings.canManageData()) {
+        status.textContent = 'Only admins and the owner can upload Event.xlsx files.';
+        status.className = 'upload-status error';
+        return;
+      }
+
       if (!fileInput.files || fileInput.files.length === 0) {
         status.textContent = '请先选择 Event.xlsx 文件';
         status.className = 'upload-status error';

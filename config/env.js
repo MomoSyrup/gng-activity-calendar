@@ -102,6 +102,7 @@ function validateEnv(source) {
       GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS: readString(source, 'GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS', {
         defaultValue: 'garena.com,garena-external.com',
       }),
+      APP_OWNER_EMAILS: readString(source, 'APP_OWNER_EMAILS'),
       APP_SESSION_TTL_HOURS: readInteger(source, 'APP_SESSION_TTL_HOURS', { defaultValue: 24, min: 1, max: 24 * 30 }),
       APP_SESSION_SECRET: readString(source, 'APP_SESSION_SECRET'),
     };

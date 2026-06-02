@@ -38,6 +38,9 @@
   var rctSheetConfigStatusEl = document.getElementById('rct-sheet-config-status');
   var environmentReadDebugSummaryEl = document.getElementById('environment-read-debug-summary');
   var environmentReadDebugEl = document.getElementById('environment-read-debug');
+  var userAdminSummaryEl = document.getElementById('user-admin-summary');
+  var userAdminStatusEl = document.getElementById('user-admin-status');
+  var userAdminPanelEl = document.getElementById('user-admin-panel');
 
   var filterSearchEl = document.getElementById('filter-search');
   var filterStatusEl = document.getElementById('filter-status');
@@ -185,6 +188,11 @@
       error: '',
     },
     environmentConfig: null,
+    userDirectory: {
+      users: [],
+      loading: false,
+      error: '',
+    },
     auth: {
       enabled: false,
       authenticated: false,
@@ -222,6 +230,7 @@
     initDrawer();
     initEventUploadPanel();
     initEnvironmentConfigPanel();
+    initUserAdminPanel();
 
     renderEnvironmentSwitcher();
     renderTabs();
@@ -265,6 +274,43 @@
 
   function isAppUnlocked() {
     return !state.auth.enabled || !!state.auth.authenticated;
+  }
+
+  function currentUser() {
+    return state.auth.user || null;
+  }
+
+  function currentPermissions() {
+    return currentUser() && currentUser().permissions
+      ? currentUser().permissions
+      : { manageData: false, manageUsers: false, manageAdmins: false };
+  }
+
+  function canManageData() {
+    return !!currentPermissions().manageData;
+  }
+
+  function canManageUsers() {
+    return !!currentPermissions().manageUsers;
+  }
+
+  function canManageAdmins() {
+    return !!currentPermissions().manageAdmins;
+  }
+
+  function roleLabel(role) {
+    switch (role) {
+      case 'owner': return 'Owner';
+      case 'admin': return 'Admin';
+      default: return 'User';
+    }
+  }
+
+  function formatDateTime(isoString) {
+    if (!isoString) return '-';
+    var date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return isoString;
+    return date.toLocaleString('zh-CN', { hour12: false });
   }
 
   function normalizeAuthState(payload) {
@@ -583,7 +629,7 @@
     }
 
     var user = state.auth.user || {};
-    var secondary = user.email || getPrimarySiteLabel(user) || 'Verified by Google';
+    var secondary = (user.email || getPrimarySiteLabel(user) || 'Verified by Google') + ' · ' + roleLabel(user.role);
     var avatarHtml = user.picture
       ? '<img class="auth-avatar-image" src="' + escapeAttr(user.picture) + '" alt="' + escapeAttr(user.name || 'Google user') + '" />'
       : '<span class="auth-avatar auth-avatar-fallback">' + escapeHtml(getUserInitial(user)) + '</span>';
@@ -742,6 +788,7 @@
     if (!config || !config.environment) {
       environmentConfigSummaryEl.textContent = 'Loading current environment source settings...';
       if (rctSheetConfigEl) rctSheetConfigEl.hidden = envKey !== 'rct';
+      renderEventUploadAccess();
       return;
     }
 
@@ -782,7 +829,40 @@
       }
     }
 
+    var allowDataChanges = canManageData();
+    if (rctPrimarySheetIdsEl) rctPrimarySheetIdsEl.disabled = !allowDataChanges;
+    if (rctConfigSheetIdEl) rctConfigSheetIdEl.disabled = !allowDataChanges;
+    if (rctCalendarSheetNameEl) rctCalendarSheetNameEl.disabled = !allowDataChanges;
+    if (rctConfigSheetNameEl) rctConfigSheetNameEl.disabled = !allowDataChanges;
+    if (rctIncludeConfigSourceEl) rctIncludeConfigSourceEl.disabled = !allowDataChanges;
+    if (rctSheetConfigSaveEl) rctSheetConfigSaveEl.disabled = !allowDataChanges;
+    if (rctSheetConfigStatusEl && !allowDataChanges && !rctSheetConfigStatusEl.textContent) {
+      rctSheetConfigStatusEl.textContent = 'Read-only: only admins and the owner can update Google Sheet sources.';
+      rctSheetConfigStatusEl.className = 'upload-status';
+    } else if (rctSheetConfigStatusEl && allowDataChanges && /^Read-only:/.test(rctSheetConfigStatusEl.textContent || '')) {
+      rctSheetConfigStatusEl.textContent = '';
+    }
+
     renderEnvironmentReadDebug(info);
+    renderEventUploadAccess();
+  }
+
+  function renderEventUploadAccess() {
+    var form = document.getElementById('event-upload-form');
+    if (!form) return;
+    var fileInput = document.getElementById('event-file-input');
+    var submitBtn = form.querySelector('button[type="submit"]');
+    var status = document.getElementById('event-upload-status');
+    var allowDataChanges = canManageData();
+
+    if (fileInput) fileInput.disabled = !allowDataChanges;
+    if (submitBtn) submitBtn.disabled = !allowDataChanges;
+    if (status && !allowDataChanges && !status.textContent) {
+      status.textContent = 'Read-only: only admins and the owner can upload Event.xlsx files.';
+      status.className = 'upload-status';
+    } else if (status && allowDataChanges && /^Read-only:/.test(status.textContent || '')) {
+      status.textContent = '';
+    }
   }
 
   function renderEnvironmentReadDebug(info) {
@@ -839,6 +919,93 @@
     html += '</div>';
 
     environmentReadDebugEl.innerHTML = html;
+  }
+
+  function initUserAdminPanel() {
+    if (!userAdminPanelEl) return;
+    userAdminPanelEl.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-user-role]');
+      if (!button) return;
+      updateUserRole(
+        button.getAttribute('data-account-id') || '',
+        button.getAttribute('data-user-role') || ''
+      );
+    });
+  }
+
+  function renderUserAdminPanel() {
+    if (!userAdminPanelEl || !userAdminSummaryEl || !userAdminStatusEl) return;
+
+    if (!isAppUnlocked()) {
+      userAdminSummaryEl.textContent = 'Sign in to load user access data.';
+      userAdminStatusEl.textContent = '';
+      userAdminPanelEl.innerHTML = '';
+      return;
+    }
+
+    var viewer = currentUser();
+    if (!canManageUsers()) {
+      userAdminSummaryEl.textContent = 'Only admins and the owner can view user access and role controls.';
+      userAdminStatusEl.textContent = '';
+      userAdminPanelEl.innerHTML = '<p class="user-admin-empty">This area is read-only for regular users.</p>';
+      return;
+    }
+
+    var users = Array.isArray(state.userDirectory.users) ? state.userDirectory.users : [];
+    userAdminSummaryEl.textContent = 'Signed in as ' + roleLabel(viewer && viewer.role) + '. Owner can promote or demote admins; admins can only promote regular users.';
+    userAdminStatusEl.textContent = state.userDirectory.error || (state.userDirectory.loading ? 'Loading user directory...' : '');
+    userAdminStatusEl.className = state.userDirectory.error ? 'upload-status error' : 'upload-status';
+
+    if (users.length === 0) {
+      userAdminPanelEl.innerHTML = '<p class="user-admin-empty">No signed-in users have been recorded yet.</p>';
+      return;
+    }
+
+    var html = '<table class="user-admin-table">';
+    html += '<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>First Login</th><th>Last Login</th><th>Actions</th></tr></thead>';
+    html += '<tbody>';
+    users.forEach(function (user) {
+      var isSelf = viewer && user.accountId === viewer.accountId;
+      html += '<tr>';
+      html += '<td>' + escapeHtml(user.name || '-') + '</td>';
+      html += '<td>' + escapeHtml(user.email || '-') + '</td>';
+      html += '<td><span class="user-admin-role ' + escapeAttr(user.role || 'user') + '">' + escapeHtml(roleLabel(user.role)) + '</span></td>';
+      html += '<td>' + escapeHtml(formatDateTime(user.firstLoginAt)) + '</td>';
+      html += '<td>' + escapeHtml(formatDateTime(user.lastLoginAt || user.lastSeenAt)) + '</td>';
+      html += '<td>';
+      if (isSelf) {
+        html += '<span class="user-admin-self">Current account</span>';
+      } else if (user.isProtectedOwner) {
+        html += '<span class="user-admin-self">Owner account</span>';
+      } else {
+        html += '<div class="user-admin-actions">';
+        if (canAssignRole(user, 'admin')) {
+          html += '<button class="command-secondary" type="button" data-account-id="' + escapeAttr(user.accountId) + '" data-user-role="admin">Make Admin</button>';
+        }
+        if (canAssignRole(user, 'user')) {
+          html += '<button class="command-secondary" type="button" data-account-id="' + escapeAttr(user.accountId) + '" data-user-role="user">Make User</button>';
+        }
+        if (!canAssignRole(user, 'admin') && !canAssignRole(user, 'user')) {
+          html += '<span class="user-admin-self">No access</span>';
+        }
+        html += '</div>';
+      }
+      html += '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    userAdminPanelEl.innerHTML = html;
+  }
+
+  function canAssignRole(user, nextRole) {
+    var viewer = currentUser();
+    if (!viewer || !user || !canManageUsers()) return false;
+    if (user.accountId === viewer.accountId) return false;
+    if (user.role === 'owner') return false;
+    if (canManageAdmins()) {
+      return nextRole === 'admin' || nextRole === 'user';
+    }
+    return user.role === 'user' && nextRole === 'admin';
   }
 
   function initTabs() {
@@ -1030,6 +1197,7 @@
     if (eventUpload.initEventUploadPanel) {
       eventUpload.initEventUploadPanel({
         getEnvironment: getActiveEnvironment,
+        canManageData: canManageData,
         onSuccess: function () {
           refreshAllData('upload');
         },
@@ -1049,6 +1217,12 @@
 
     form.addEventListener('submit', function (event) {
       event.preventDefault();
+
+      if (!canManageData()) {
+        status.textContent = 'Only admins and the owner can upload Event.xlsx files.';
+        status.className = 'upload-status error';
+        return;
+      }
 
       if (!fileInput.files || fileInput.files.length === 0) {
         status.textContent = '请先选择 Event.xlsx 文件';
@@ -1159,6 +1333,14 @@
 
         state.health.error = buildHealthError(results);
         renderAll();
+        if (canManageUsers()) {
+          refreshUserDirectory();
+        } else {
+          state.userDirectory.users = [];
+          state.userDirectory.error = '';
+          state.userDirectory.loading = false;
+          renderUserAdminPanel();
+        }
         if (results[0].status === 'fulfilled' && (triggerSource === 'initial' || triggerSource === 'environment-switch')) {
           window.requestAnimationFrame(function () {
             renderCalendar();
@@ -1176,6 +1358,7 @@
     renderAuthGate();
     renderEnvironmentSwitcher();
     renderEnvironmentConfigPanel();
+    renderUserAdminPanel();
     syncFilterControls();
     renderTabs();
     switchView();
@@ -2490,8 +2673,102 @@
     });
   }
 
+  function fetchUserDirectory() {
+    return fetch('/api/admin/users', {
+      headers: {
+        'X-Next-Path': buildCurrentPath(),
+      },
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return {};
+      }).then(function (payload) {
+        if (res.status === 401 || payload.error === 'authentication_required') {
+          throw buildAuthRequiredError(payload, 'Your session expired. Please sign in again.');
+        }
+        if (!res.ok) throw new Error(payload.message || payload.error || 'Failed to load user access data');
+        return payload;
+      });
+    });
+  }
+
+  function refreshUserDirectory() {
+    if (!canManageUsers()) {
+      state.userDirectory.users = [];
+      state.userDirectory.loading = false;
+      state.userDirectory.error = '';
+      renderUserAdminPanel();
+      return;
+    }
+
+    state.userDirectory.loading = true;
+    state.userDirectory.error = '';
+    renderUserAdminPanel();
+
+    fetchUserDirectory()
+      .then(function (payload) {
+        state.userDirectory.users = Array.isArray(payload.users) ? payload.users : [];
+      })
+      .catch(function (error) {
+        if (error && error.code === 'authentication_required') {
+          applyAuthRequired(error);
+          return;
+        }
+        state.userDirectory.error = error.message || 'Failed to load user access data';
+      })
+      .finally(function () {
+        state.userDirectory.loading = false;
+        renderUserAdminPanel();
+      });
+  }
+
+  function updateUserRole(accountId, role) {
+    if (!accountId || !role || !canManageUsers()) return;
+    state.userDirectory.error = '';
+    state.userDirectory.loading = true;
+    renderUserAdminPanel();
+
+    fetch('/api/admin/users/' + encodeURIComponent(accountId) + '/role', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Next-Path': buildCurrentPath(),
+      },
+      body: JSON.stringify({ role: role }),
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return {};
+        }).then(function (payload) {
+          if (res.status === 401 || payload.error === 'authentication_required') {
+            throw buildAuthRequiredError(payload, 'Your session expired. Please sign in again.');
+          }
+          if (!res.ok) throw new Error(payload.message || payload.error || 'Failed to update role');
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        state.userDirectory.users = Array.isArray(payload.users) ? payload.users : [];
+      })
+      .catch(function (error) {
+        if (error && error.code === 'authentication_required') {
+          applyAuthRequired(error);
+          return;
+        }
+        state.userDirectory.error = error.message || 'Failed to update role';
+      })
+      .finally(function () {
+        state.userDirectory.loading = false;
+        renderUserAdminPanel();
+      });
+  }
+
   function saveEnvironmentConfig() {
     if (getActiveEnvironment() !== 'rct' || !rctSheetConfigStatusEl) return;
+    if (!canManageData()) {
+      rctSheetConfigStatusEl.textContent = 'Only admins and the owner can update Google Sheet sources.';
+      rctSheetConfigStatusEl.className = 'upload-status error';
+      return;
+    }
 
     rctSheetConfigStatusEl.textContent = 'Saving RCT source rules...';
     rctSheetConfigStatusEl.className = 'upload-status';

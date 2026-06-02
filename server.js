@@ -21,6 +21,7 @@ const excelReader = require('./excel-reader');
 const alphaSync = require('./alpha-knowledge-sync');
 const seatalkBot = require('./seatalk-bot');
 const appAuth = require('./lib/app-auth');
+const userDirectoryLib = require('./lib/user-directory');
 const logger = require('./lib/logger');
 const packageInfo = require('./package.json');
 
@@ -33,9 +34,11 @@ const POLL_INTERVAL = env.POLL_INTERVAL;
 const DATA_DIR = path.join(__dirname, 'data');
 const EVENT_UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'uploads');
 const ENVIRONMENT_CONFIG_PATH = path.join(DATA_DIR, 'environment-config.json');
+const USER_DIRECTORY_PATH = path.join(DATA_DIR, 'user-directory.json');
 const GOOGLE_LOGIN_ENABLED = env.GOOGLE_LOGIN_ENABLED;
 const GOOGLE_LOGIN_CLIENT_ID = env.GOOGLE_LOGIN_CLIENT_ID || env.GOOGLE_CLIENT_ID;
 const GOOGLE_ALLOWED_EMAIL_DOMAINS = appAuth.normalizeAllowedEmailDomains(env.GOOGLE_LOGIN_ALLOWED_EMAIL_DOMAINS);
+const APP_OWNER_EMAILS = userDirectoryLib.normalizeOwnerEmails(env.APP_OWNER_EMAILS);
 const APP_SESSION_TTL_MS = env.APP_SESSION_TTL_HOURS * 60 * 60 * 1000;
 const APP_SESSION_SECRET = env.APP_SESSION_SECRET;
 
@@ -61,6 +64,11 @@ fs.mkdirSync(EVENT_UPLOAD_TMP_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 envWarnings.forEach((warning) => logger.warn('config_warning', { warning }));
+
+const userDirectory = userDirectoryLib.createUserDirectoryStore({
+  filePath: USER_DIRECTORY_PATH,
+  ownerEmails: APP_OWNER_EMAILS,
+});
 
 // --------------- Google Sheets Auth (OAuth2) ---------------
 
@@ -453,14 +461,20 @@ function buildLogoutPath(nextPath) {
 
 function buildSessionView(session) {
   if (!session) return null;
+  const resolvedUser = userDirectory.resolveSession(session);
   return {
-    accountId: session.sub,
+    accountId: session.sub || session.accountId || '',
     name: session.name || '',
     email: session.email || '',
     picture: session.picture || '',
     provider: session.provider || 'google',
     hostedDomain: session.hostedDomain || '',
     expiresAt: session.expiresAt || '',
+    role: resolvedUser ? resolvedUser.role : userDirectoryLib.ROLE_USER,
+    permissions: resolvedUser ? resolvedUser.permissions : userDirectoryLib.permissionsForRole(userDirectoryLib.ROLE_USER),
+    firstLoginAt: resolvedUser ? resolvedUser.firstLoginAt : '',
+    lastLoginAt: resolvedUser ? resolvedUser.lastLoginAt : '',
+    lastSeenAt: resolvedUser ? resolvedUser.lastSeenAt : '',
   };
 }
 
@@ -492,12 +506,39 @@ function requireAuthForApi(req, res, next) {
   const session = getAuthSession(req);
   if (session) {
     req.authSession = session;
+    req.authUser = userDirectory.resolveSession(session);
     return next();
   }
 
   res.status(401).json({
     error: 'authentication_required',
     message: '请先使用 Garena Google 邮箱登录',
+  });
+}
+
+function requireDataManager(req, res, next) {
+  const authUser = req.authUser || userDirectory.resolveSession(req.authSession);
+  if (authUser && authUser.permissions && authUser.permissions.manageData) {
+    req.authUser = authUser;
+    return next();
+  }
+
+  return res.status(403).json({
+    error: 'forbidden',
+    message: 'Only admins or the owner can modify Event uploads and Google Sheet sources.',
+  });
+}
+
+function requireUserManager(req, res, next) {
+  const authUser = req.authUser || userDirectory.resolveSession(req.authSession);
+  if (authUser && authUser.permissions && authUser.permissions.manageUsers) {
+    req.authUser = authUser;
+    return next();
+  }
+
+  return res.status(403).json({
+    error: 'forbidden',
+    message: 'Only admins or the owner can manage user roles.',
   });
 }
 
@@ -907,6 +948,7 @@ app.get('/readyz', (_req, res) => {
 app.get('/api/auth/session', (req, res) => {
   const nextPath = sanitizeNextPath((req.query && req.query.next) || '/');
   const session = getAuthSession(req);
+  const trackedUser = session ? userDirectory.recordSession(session, { markLogin: false }) : null;
   res.json({
     enabled: GOOGLE_LOGIN_ENABLED,
     authenticated: !!session,
@@ -915,7 +957,7 @@ app.get('/api/auth/session', (req, res) => {
     allowedEmailDomains: GOOGLE_ALLOWED_EMAIL_DOMAINS,
     loginUrl: '',
     logoutUrl: GOOGLE_LOGIN_ENABLED ? buildLogoutPath(nextPath) : '',
-    user: buildSessionView(session),
+    user: trackedUser ? { ...trackedUser, expiresAt: session.expiresAt || '' } : null,
   });
 });
 
@@ -934,6 +976,7 @@ app.post('/api/auth/google', express.json({ limit: '256kb' }), async (req, res) 
 
   try {
     const identity = await verifyGoogleCredential(credential);
+    const registeredUser = userDirectory.recordSession(identity, { markLogin: true });
     const sessionPayload = createAppSession(identity);
     setAppSessionCookie(res, sessionPayload);
 
@@ -950,7 +993,10 @@ app.post('/api/auth/google', express.json({ limit: '256kb' }), async (req, res) 
       clientId: GOOGLE_LOGIN_CLIENT_ID,
       allowedEmailDomains: GOOGLE_ALLOWED_EMAIL_DOMAINS,
       logoutUrl: buildLogoutPath(sanitizeNextPath((req.body && req.body.nextPath) || '/')),
-      user: buildSessionView(sessionPayload),
+      user: {
+        ...registeredUser,
+        expiresAt: sessionPayload.expiresAt || '',
+      },
     });
   } catch (error) {
     logger.warn('google_login_rejected', { error: error.message });
@@ -1009,7 +1055,33 @@ app.get('/api/environment-config', requireAuthForApi, (req, res) => {
   });
 });
 
-app.post('/api/environment-config', requireAuthForApi, express.json({ limit: '256kb' }), async (req, res) => {
+app.get('/api/admin/users', requireAuthForApi, requireUserManager, (_req, res) => {
+  res.json({
+    users: userDirectory.listUsers(),
+  });
+});
+
+app.patch('/api/admin/users/:accountId/role', requireAuthForApi, requireUserManager, express.json({ limit: '64kb' }), (req, res) => {
+  try {
+    const updatedUser = userDirectory.updateUserRole(
+      req.authSession,
+      req.params && req.params.accountId,
+      req.body && req.body.role
+    );
+    res.json({
+      ok: true,
+      user: updatedUser,
+      users: userDirectory.listUsers(),
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({
+      error: error.code || 'role_update_failed',
+      message: error.message || 'Failed to update role',
+    });
+  }
+});
+
+app.post('/api/environment-config', requireAuthForApi, requireDataManager, express.json({ limit: '256kb' }), async (req, res) => {
   const envKey = getRequestEnvironmentKey(req);
   const envDef = getEnvironmentDef(envKey);
 
@@ -1438,7 +1510,7 @@ app.get('/api/calendar', requireAuthForApi, (req, res) => {
   }
 });
 
-app.post('/api/event-upload', requireAuthForApi, upload.single('eventFile'), (req, res) => {
+app.post('/api/event-upload', requireAuthForApi, requireDataManager, upload.single('eventFile'), (req, res) => {
   const envKey = getRequestEnvironmentKey(req);
   const envState = getEnvironmentState(envKey);
   if (!req.file) return res.status(400).json({ error: '请先选择 Event.xlsx 文件' });

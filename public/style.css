@@ -321,6 +321,77 @@ h1 {
   margin-top: 0.35rem;
 }
 
+.user-admin-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.user-admin-empty {
+  margin: 0;
+  color: var(--text-secondary, rgba(255,255,255,0.72));
+}
+
+.user-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+.user-admin-table th,
+.user-admin-table td {
+  padding: 0.7rem 0.65rem;
+  border-bottom: 1px solid var(--panel-border, rgba(255,255,255,0.12));
+  text-align: left;
+  vertical-align: top;
+}
+
+.user-admin-table th {
+  color: var(--text-secondary, rgba(255,255,255,0.72));
+  font-weight: 600;
+}
+
+.user-admin-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border, rgba(255,255,255,0.16));
+  background: rgba(255,255,255,0.05);
+  font-size: 0.82rem;
+}
+
+.user-admin-role.owner {
+  border-color: rgba(239, 177, 78, 0.46);
+  background: rgba(239, 177, 78, 0.14);
+}
+
+.user-admin-role.admin {
+  border-color: rgba(92, 211, 170, 0.44);
+  background: rgba(92, 211, 170, 0.12);
+}
+
+.user-admin-role.user {
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
+}
+
+.user-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.user-admin-actions button {
+  min-width: 82px;
+}
+
+.user-admin-self {
+  color: var(--text-secondary, rgba(255,255,255,0.72));
+  font-size: 0.86rem;
+}
+
 .auth-chip {
   display: inline-flex;
   align-items: center;
