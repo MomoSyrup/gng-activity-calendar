@@ -138,6 +138,20 @@
       </div>
 
       <div class="config-check-view" id="config-check-view" style="display:none">
+        <div class="inspection-topbar">
+          <div>
+            <p class="inspection-kicker">Inspection Workspace</p>
+            <h3>Data Control Center</h3>
+            <p class="inspection-subtitle">Split source editing, read diagnostics, and user access into separate work areas so the page stays easier to scan.</p>
+          </div>
+          <div class="inspection-nav" id="inspection-nav">
+            <button class="inspection-nav-btn active" type="button" data-inspection-section="source">Source</button>
+            <button class="inspection-nav-btn" type="button" data-inspection-section="diagnostics">Diagnostics</button>
+            <button class="inspection-nav-btn" type="button" data-inspection-section="access">User Access</button>
+          </div>
+        </div>
+        <section class="inspection-section inspection-section-source" id="inspection-section-source">
+          <div class="inspection-source-grid">
         <div class="ops-panel environment-config-panel">
           <div class="environment-config-head">
             <h3>Environment Data Source</h3>
@@ -210,6 +224,8 @@
         </div>
 
         <section class="ops-panel ops-list-panel" id="ops-anomaly-list"></section>
+        </div>
+        </section>
       </div>
     </main>
 

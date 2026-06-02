@@ -2487,12 +2487,193 @@ button.change-chip:hover {
    ================================================================ */
 
 .config-check-view {
-  background: var(--glass); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-radius: var(--radius); border: 1px solid var(--glass-border);
-  padding: 1.2rem; box-shadow: var(--shadow);
+  background:
+    radial-gradient(circle at top right, rgba(206, 92, 123, 0.08), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(83, 171, 141, 0.08), transparent 36%),
+    var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  padding: 1.2rem;
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.inspection-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  padding: 0.25rem 0.15rem 0.75rem;
+}
+
+.inspection-kicker {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.inspection-topbar h3 {
+  font-size: 1.18rem;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.inspection-subtitle {
+  max-width: 68ch;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.inspection-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.inspection-nav-btn {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.inspection-nav-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.inspection-nav-btn.active {
+  border-color: rgba(207, 105, 128, 0.65);
+  background: linear-gradient(135deg, rgba(207, 105, 128, 0.28), rgba(182, 75, 112, 0.2));
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(182, 75, 112, 0.18);
+}
+
+.inspection-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.inspection-source-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.config-check-view[data-inspection-section="diagnostics"] .inspection-source-grid,
+.config-check-view[data-inspection-section="access"] .inspection-source-grid {
+  grid-template-columns: 1fr;
+}
+
+.config-check-view[data-inspection-section="diagnostics"] .inspection-source-grid > *,
+.config-check-view[data-inspection-section="access"] .inspection-source-grid > * {
+  grid-column: 1 / -1;
+}
+
+.inspection-feature-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.inspection-feature-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(207, 105, 128, 0.9), rgba(76, 171, 145, 0.8), rgba(245, 181, 86, 0.8));
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.inspection-section-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.28rem;
+}
+
+.inspection-help-grid,
+.inspection-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.inspection-help-grid {
+  margin-top: 0.85rem;
+}
+
+.inspection-help-card {
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.inspection-help-title {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.35rem;
+}
+
+.inspection-help-card p,
+.inspection-help-card pre {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.inspection-help-card pre {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 0.1rem;
+}
+
+.inspection-mini-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.inspection-mini-note strong {
+  color: var(--text);
+}
+
+.inspection-mini-note code {
+  padding: 0.14rem 0.4rem;
+}
+
+.inspection-toggle-card {
+  min-height: 100%;
+  justify-content: space-between;
 }
 
 .ops-grid {
@@ -2658,6 +2839,10 @@ button.change-chip:hover {
   font-size: 1rem;
   margin-bottom: 0.6rem;
   color: var(--text);
+}
+
+.event-upload-panel-priority h3 {
+  font-size: 1.08rem;
 }
 
 .event-upload-desc {
@@ -3166,7 +3351,10 @@ footer {
   .health-strip-grid,
   .command-select-grid,
   .ops-health-grid,
-  .ops-summary-grid {
+  .ops-summary-grid,
+  .inspection-source-grid,
+  .inspection-help-grid,
+  .inspection-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3178,6 +3366,16 @@ footer {
   .operations-view,
   .config-check-view {
     padding: 0.85rem;
+  }
+
+  .inspection-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inspection-nav {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .change-banner-top,
@@ -3232,6 +3430,7 @@ footer {
   .command-result { text-align: left; }
   .auth-card-actions { flex-direction: column; align-items: stretch; }
   .auth-link { width: 100%; }
+  .inspection-nav-btn { flex: 1; text-align: center; }
   .quick-view-inner,
   .change-chip-list,
   .operations-summary-actions,

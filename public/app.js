@@ -27,6 +27,7 @@
   var authUserPanelEl = document.getElementById('auth-user-panel');
   var authGateEl = document.getElementById('auth-gate');
   var authCardEl = document.getElementById('auth-card');
+  var inspectionNavEl = document.getElementById('inspection-nav');
   var environmentConfigSummaryEl = document.getElementById('environment-config-summary');
   var rctSheetConfigEl = document.getElementById('rct-sheet-config');
   var rctPrimarySheetIdsEl = document.getElementById('rct-primary-sheet-ids');
@@ -169,6 +170,7 @@
 
   var state = {
     activeEnvironment: 'rct',
+    inspectionSection: 'source',
     activeTab: '__calendar__',
     quickView: 'all',
     activeTypeFilter: 'all',
@@ -228,6 +230,7 @@
     initUpcomingRangeBar();
     initGlobalActions();
     initDrawer();
+    initInspectionNav();
     initEventUploadPanel();
     initEnvironmentConfigPanel();
     initUserAdminPanel();
@@ -1359,6 +1362,7 @@
     renderEnvironmentSwitcher();
     renderEnvironmentConfigPanel();
     renderUserAdminPanel();
+    renderInspectionNav();
     syncFilterControls();
     renderTabs();
     switchView();
@@ -1386,6 +1390,28 @@
     renderUpcomingView();
     renderOperationsView();
     renderInspectionView();
+  }
+
+  function initInspectionNav() {
+    if (!inspectionNavEl) return;
+    inspectionNavEl.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-inspection-section]');
+      if (!button) return;
+      var nextSection = button.getAttribute('data-inspection-section') || 'source';
+      if (state.inspectionSection === nextSection) return;
+      state.inspectionSection = nextSection;
+      renderInspectionNav();
+      renderInspectionView();
+    });
+  }
+
+  function renderInspectionNav() {
+    if (!inspectionNavEl) return;
+    var buttons = inspectionNavEl.querySelectorAll('[data-inspection-section]');
+    buttons.forEach(function (button) {
+      var active = button.getAttribute('data-inspection-section') === state.inspectionSection;
+      button.classList.toggle('active', active);
+    });
   }
 
   function renderTabs() {
@@ -2123,9 +2149,42 @@
   }
 
   function renderInspectionView() {
-    renderOpsHealth();
-    renderOpsSummary();
-    renderOpsAnomalyList();
+    var section = state.inspectionSection || 'source';
+    if (configView) {
+      configView.setAttribute('data-inspection-section', section);
+    }
+    setInspectionPanelVisible(findInspectionPanel('#environment-config-summary'), section === 'source');
+    setInspectionPanelVisible(findInspectionPanel('#event-upload-form'), section === 'source');
+    setInspectionPanelVisible(findInspectionPanel('#ops-health'), section === 'diagnostics');
+    setInspectionPanelVisible(findInspectionPanel('#ops-anomaly-summary'), section === 'diagnostics');
+    setInspectionPanelVisible(findInspectionPanel('#environment-read-debug'), section === 'diagnostics');
+    setInspectionPanelVisible(findInspectionPanel('#ops-anomaly-list'), section === 'diagnostics');
+    setInspectionPanelVisible(findInspectionPanel('#user-admin-panel'), section === 'access');
+
+    if (section === 'source') {
+      renderEnvironmentConfigPanel();
+      renderEventUploadAccess();
+    } else if (section === 'diagnostics') {
+      renderOpsHealth();
+      renderOpsSummary();
+      renderOpsAnomalyList();
+      renderEnvironmentConfigPanel();
+    } else if (section === 'access') {
+      renderUserAdminPanel();
+      renderEnvironmentConfigPanel();
+    }
+  }
+
+  function findInspectionPanel(selector) {
+    var node = document.querySelector(selector);
+    if (!node) return null;
+    var panel = node.closest('.ops-panel, .event-upload-panel');
+    return panel || node;
+  }
+
+  function setInspectionPanelVisible(panel, visible) {
+    if (!panel) return;
+    panel.hidden = !visible;
   }
 
   function renderOpsHealth() {
